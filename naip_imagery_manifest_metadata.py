@@ -73,4 +73,5 @@ for state, max_year in most_recent_years.items():
     else:
         print(f"No data found for {state}")
 
+
 # EOF
