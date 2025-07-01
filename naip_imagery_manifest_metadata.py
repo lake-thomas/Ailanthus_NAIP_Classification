@@ -10,7 +10,7 @@ import pandas as pd
 # This script reads a manifest text file from an AWS NAIP S3 bucket, processes it, and extracts relevant information.
 
 #Read the manifest text file
-manifest_file = r'C:/Users/talake2/Desktop/Ailanthus_NAIP_Classification/naip_manifest_aws_june3025.txt'
+manifest_file = r'C:/Users/tomla/OneDrive/Desktop/Ailanthus_NAIP_Classification/naip_manifest_aws_june3025.txt'
 
 # Read the text file into a DataFrame
 df = pd.read_csv(manifest_file, header=None, delimiter='\t')
