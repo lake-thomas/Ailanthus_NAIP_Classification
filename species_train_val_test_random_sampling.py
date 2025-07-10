@@ -1,6 +1,8 @@
 # This script samples presence and pseudo-absence data for Ailanthus altissima in North Carolina,
 # creates random splits, and extracts NAIP image chips and WorldClim variables for each point.
 
+# Thomas Lake, July 2025
+
 # Imports
 import os
 import random
@@ -16,6 +18,11 @@ from shapely.geometry import Point, box
 import tqdm
 
 ### Paths for NAIP, Climate, Env, and Host Occurrence data ###
+
+# Root Paths to Save Dataset 
+dataset_name = "Ailanthus_Uniform_PA_NAIP_256_July25" 
+dataset_root = rf"D:\Ailanthus_NAIP_Classification\Datasets\{dataset_name}"
+os.makedirs(dataset_root, exist_ok=True)  # Create root directory if it doesn't exist
 
 # Paths for NAIP data
 tileindex_fp = r"D:\Ailanthus_NAIP_Classification\tileindex_NC_NAIP_2022\tileindex_NC_NAIP_2022.shp"
@@ -161,7 +168,8 @@ test_data['set'] = 'test'
 pa_data_split = pd.concat([train_data, val_data, test_data], ignore_index=True)
 
 # Save presence and pseudo-absence data to GeoJSON with train/val/test splits
-pa_data_split.to_file(r"D:\Ailanthus_NAIP_Classification\Ailanthus_Pres_Pseudoabs_NC_July25.geojson", driver="GeoJSON")
+geojson_out_fp = os.path.join(dataset_root, "Ailanthus_Pres_Pseudoabs_NC.geojson")
+pa_data_split.to_file(geojson_out_fp, driver="GeoJSON")
 
 print("Sampled Presence/ Pseudoabsence Data")
 print(pa_data_split.head())
@@ -359,7 +367,7 @@ def extract_naip_chip_for_point(lon, lat, out_fp, chip_size, tileindex, naip_fol
     return True
 
 # Create the output folder for NAIP image chips
-output_naip_chips_folder = r"D:\Ailanthus_NAIP_Classification\NAIP_NC_Image_Chips"
+output_naip_chips_folder = os.path.join(dataset_root, "images")
 os.makedirs(output_naip_chips_folder, exist_ok=True)
 
 chip_size = 256  # Size of the chip in pixels (256x256)
@@ -402,6 +410,7 @@ wc_normalization_stats = compute_worldclim_stats(worldclim_folder, downloaded_un
 dem_normalization_stats = compute_dem_stats(elevation_raster_fp)
 
 # Iterate over each point in the presence/ pseudo-absence data and create records based on the chips and WorldClim data
+print("Extracting WorldClim and GHM variables for each point ...")
 for idx, row in tqdm.tqdm(pa_data_split.iterrows(), total=len(pa_data_split)):
     lat, lon = row['lat'], row['lon']
     cell_id = row['cell_id']
@@ -438,7 +447,14 @@ for idx, row in tqdm.tqdm(pa_data_split.iterrows(), total=len(pa_data_split)):
 df_master = pd.DataFrame(master_records)
 
 # Save the master DataFrame to CSV
-csv_out_fp = r"D:\Ailanthus_NAIP_Classification\Ailanthus_NC_Pres_Pseudoabs_NAIP_WC_Train_Val_Test_June25.csv"
+csv_out_fp = os.path.join(dataset_root, "Ailanthus_Train_Val_Test.csv")
+
+# Filter out rows where the chip file does not exist (edge cases where UTM zones overlap and chip extraction failed)
+print("Verifying chip paths exist ...")
+df_master['chip_path_abs'] = df_master['chip_path'].apply(lambda x: os.path.join(os.path.dirname(csv_out_fp), x))
+df_master = df_master[df_master['chip_path_abs'].apply(os.path.exists)].drop(columns=['chip_path_abs'])
+
+# Save the DataFrame to CSV
 df_master.to_csv(csv_out_fp, index=False)
 print(f"Saved CSV to {csv_out_fp}")
 
