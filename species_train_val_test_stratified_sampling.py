@@ -1,6 +1,7 @@
 # This script samples presence and pseudo-absence data for Ailanthus altissima in North Carolina,
 # creates cross-validation splits, and extracts NAIP image chips and WorldClim variables for each point.
 
+# Thomas Lake, July 2025
 
 # Imports
 import os
@@ -19,6 +20,11 @@ import seaborn as sns
 import tqdm
 
 ### Paths for NAIP, Climate, Env, and Host Occurrence data ###
+
+# Root Paths to Save Dataset 
+dataset_name = "Ailanthus_CrossVal_PA_NAIP_256_July25" 
+dataset_root = rf"D:\Ailanthus_NAIP_Classification\Datasets\{dataset_name}"
+os.makedirs(dataset_root, exist_ok=True)  # Create root directory if it doesn't exist
 
 # Paths for NAIP data
 tileindex_fp = r"D:\Ailanthus_NAIP_Classification\tileindex_NC_NAIP_2022\tileindex_NC_NAIP_2022.shp"
@@ -200,15 +206,13 @@ pa_data_split = pd.concat(cv_datasets, ignore_index=True)
 print(pa_data_split.head(10))
 
 # Save to GeoJSON
-pa_data_split.to_file(
-    r"D:\Ailanthus_NAIP_Classification\Ailanthus_Pres_Pseudoabs_NC_SpatialCV_3Folds_July25.geojson",
-    driver="GeoJSON"
-)
+geojson_out_fp = os.path.join(dataset_root, "Ailanthus_Pres_Pseudoabs_NC_SpatialCV_3Folds_July25.geojson")
+pa_data_split.to_file(geojson_out_fp, driver="GeoJSON")
 
 # Save separate GeoJSON files for each CV round
 for round_num in [1, 2, 3]:
     round_df = pa_data_split[pa_data_split["cv_round"] == round_num]
-    out_fp = rf"D:\Ailanthus_NAIP_Classification\Ailanthus_Pres_Pseudoabs_NC_SpatialCV_Fold{round_num}_July25.geojson"
+    out_fp = os.path.join(dataset_root, f"Ailanthus_Pres_Pseudoabs_NC_SpatialCV_Fold{round_num}_July25.geojson")
     round_df.to_file(out_fp, driver="GeoJSON")
     print(f"Saved CV Round {round_num} to: {out_fp}")
 
@@ -457,10 +461,9 @@ def extract_chip_for_point(lon, lat, out_fp, chip_size, tileindex, naip_folder):
     return True
 
 ### Sample NAIP chips and WorldClim variables for each point in the CV dataset ###
-# Paths
-cv_geojson_base = r"D:\Ailanthus_NAIP_Classification"
 
-chip_size = 1024 # Size of chip in pixels (256x256)
+# Define chip size
+chip_size = 256 # Size of chip in pixels (256x256)
 
 # Load tileindex and compute Worldclim normalization stats once
 tileindex = gpd.read_file(tileindex_fp).to_crs(epsg=4326)
@@ -472,11 +475,11 @@ for cv_round in [1, 2, 3]:
     print(f"\n=== Processing CV Round {cv_round} ===")
 
     # Load GeoJSON for this round
-    gdf = gpd.read_file(os.path.join(cv_geojson_base, f"Ailanthus_Pres_Pseudoabs_NC_SpatialCV_Fold{round_num}_July25.geojson"))
+    gdf = gpd.read_file(os.path.join(dataset_root, f"Ailanthus_Pres_Pseudoabs_NC_SpatialCV_Fold{round_num}_July25.geojson"))
 
     # Create CV round-specific folder
-    cv_dir = os.path.join(cv_geojson_base, f"CV{cv_round}")
-    chip_dir = os.path.join(cv_dir, "chips")
+    cv_dir = os.path.join(dataset_root, f"CV_{cv_round}")
+    chip_dir = os.path.join(cv_dir, "images")
     os.makedirs(chip_dir, exist_ok=True)
 
     master_records = []
@@ -526,10 +529,17 @@ for cv_round in [1, 2, 3]:
         master_records.append(record)
 
     # Save master CSV in CV round folder
-    df_out = pd.DataFrame(master_records)
-    out_csv = os.path.join(cv_dir, f"Ailanthus_NC_CV{cv_round}_Master.csv")
-    df_out.to_csv(out_csv, index=False)
-    print(f"✓ Saved CV{cv_round} dataset to: {out_csv}")
+    df_master = pd.DataFrame(master_records)
+    csv_out_fp = os.path.join(dataset_root, f"Ailanthus_Train_Val_Test_CV_{cv_round}.csv") 
+
+    # Filter out rows where the chip file does not exist (edge cases where UTM zones overlap and chip extraction failed)
+    print("Verifying chip paths exist ...")
+    df_master['chip_path_abs'] = df_master['chip_path'].apply(lambda x: os.path.join(cv_dir, x))
+    print(df_master[['chip_path', 'chip_path_abs']].head())
+    df_master = df_master[df_master['chip_path_abs'].apply(os.path.exists)].drop(columns=['chip_path_abs'])
+    
+    df_master.to_csv(csv_out_fp, index=False)
+    print(f"✓ Saved CV{cv_round} dataset to: {csv_out_fp}")
 
 
 
