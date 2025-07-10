@@ -1,5 +1,6 @@
-# This script samples presence and pseudo-absence points for Ailanthus altissima based on NAIP tile coverage and WorldClim raster data.
-# It ensures one presence and one pseudo-absence per unique climate cell.
+# This script samples presence and pseudo-absence data for Ailanthus altissima in North Carolina,
+# creates cross-validation splits, and extracts NAIP image chips and WorldClim variables for each point.
+
 
 # Imports
 import os
@@ -17,11 +18,11 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import tqdm
 
-### Paths for NAIP, Climate, and Host Occurrence data ###
+### Paths for NAIP, Climate, Env, and Host Occurrence data ###
 
 # Paths for NAIP data
 tileindex_fp = r"D:\Ailanthus_NAIP_Classification\tileindex_NC_NAIP_2022\tileindex_NC_NAIP_2022.shp"
-naip_folder = r"D:\Ailanthus_NAIP_Classification\NAIP_NC_4Band"
+naip_folder = r"D:\Ailanthus_NAIP_Classification\NAIP_NC_4Band_1m"
 
 # Paths for Host Occurrence Data
 host_occurrence_fp = r"D:\Ailanthus_NAIP_Classification\Ailanthus_Occurrences\ailanthus_nc_inat_gbif_dedup_2015_2025.csv"
@@ -29,6 +30,12 @@ host_occurrence_fp = r"D:\Ailanthus_NAIP_Classification\Ailanthus_Occurrences\ai
 # Paths for Climate Data
 worldclim_folder = r"D:\Ailanthus_NAIP_Classification\Env_Data\Worldclim"
 wc_raster_fp = r"D:\Ailanthus_NAIP_Classification\Env_Data\Worldclim\wc2.1_30s_bio_1.tif"
+
+# Path for Elevation DEM Data
+elevation_raster_fp = r"D:\Ailanthus_NAIP_Classification\Env_Data\DEM_SRTM\nc_dem_srtm.tif"
+
+# Path for Human Modification Data
+ghm_raster_fp = r"D:\Ailanthus_NAIP_Classification\Env_Data\Global_Human_modification\gHM_WGS84.tif"
 
 # States shapefile path
 states_shapefile_path = r"D:\Ailanthus_NAIP_Classification\Env_Data\tl_2024_us_state\tl_2024_us_state.shp"
@@ -81,25 +88,44 @@ max_attempts = n_absences * 20  # fail-safe
 
 # Randomly sample points within the area of downloaded NAIP tiles
 # Ensure we do not sample the same climate cell as a presence
-with rasterio.open(wc_raster_fp) as wc_src:
+# And check that the sampled points are valid in both WorldClim and GHM rasters
+print("Sampling Pseudo-Absences ...")
+with rasterio.open(wc_raster_fp) as wc_src, rasterio.open(ghm_raster_fp) as ghm_src:
     wc_nodata = wc_src.nodata
+    ghm_nodata = ghm_src.nodata
+    wc_transform = wc_src.transform
+    ghm_transform = ghm_src.transform
 
-    # Iterate until we have enough pseudo-absences
     while len(absences) < n_absences and attempts < max_attempts:
-        # Sample within bounds of the downloaded NAIP tiles
         x = random.uniform(downloaded_union.bounds[0], downloaded_union.bounds[2])
         y = random.uniform(downloaded_union.bounds[1], downloaded_union.bounds[3])
         pt = Point(x, y)
+
         if downloaded_union.contains(pt):
-            # Sample climate data at the point to verify the data are valid
-            value = list(wc_src.sample([(x, y)]))[0][0]
-            # print(value)
-            if (value == wc_nodata or np.isnan(value) or value < -1e5 or value > 1e5):
-                attempts +=1
-                # print("Found Bad Value - Not Using That Point")
+            wc_val = list(wc_src.sample([(x, y)]))[0][0]
+            ghm_val = list(ghm_src.sample([(x, y)]))[0][0]
+
+            # Check WC raster valid
+            wc_invalid = (
+                wc_val == wc_nodata or
+                np.isnan(wc_val) or
+                wc_val < -1e5 or
+                wc_val > 1e5
+            )
+
+            # Check GHM raster valid (including tiny values near zero)
+            ghm_invalid = (
+                ghm_val is None or
+                np.isnan(ghm_val) or
+                (ghm_nodata is not None and ghm_val == ghm_nodata) or
+                abs(ghm_val) < 1e-10
+            )
+
+            if wc_invalid or ghm_invalid:
+                attempts += 1
                 continue
 
-            # Check climate cell ID and add if unique
+            # Check climate cell uniqueness (you could choose either transform)
             r, c = rowcol(wc_transform, pt.x, pt.y)
             cell_id = f"{r}_{c}"
             if cell_id not in used_cells:
@@ -175,14 +201,14 @@ print(pa_data_split.head(10))
 
 # Save to GeoJSON
 pa_data_split.to_file(
-    r"D:\Ailanthus_NAIP_Classification\Ailanthus_Occurrences\Ailanthus_Pres_Pseudoabs_NC_July25_FixedTrainCV.geojson",
+    r"D:\Ailanthus_NAIP_Classification\Ailanthus_Pres_Pseudoabs_NC_SpatialCV_3Folds_July25.geojson",
     driver="GeoJSON"
 )
 
 # Save separate GeoJSON files for each CV round
 for round_num in [1, 2, 3]:
     round_df = pa_data_split[pa_data_split["cv_round"] == round_num]
-    out_fp = rf"D:\Ailanthus_NAIP_Classification\Ailanthus_Occurrences\Ailanthus_Pres_Pseudoabs_NC_CV{round_num}.geojson"
+    out_fp = rf"D:\Ailanthus_NAIP_Classification\Ailanthus_Pres_Pseudoabs_NC_SpatialCV_Fold{round_num}_July25.geojson"
     round_df.to_file(out_fp, driver="GeoJSON")
     print(f"Saved CV Round {round_num} to: {out_fp}")
 
@@ -198,6 +224,7 @@ fold_counts = fold_counts.rename_axis("Fold").reset_index()
 print("Presence/Pseudoabsence counts by fold:\n")
 print(fold_counts.to_string(index=False))
 
+# Plotting
 # # Define consistent colors
 # set_colors = {
 #     'train': '#1f77b4',  # blue
@@ -290,6 +317,58 @@ def extract_worldclim_vars_for_point(lon, lat, worldclim_folder, normalization_s
             vals[varname] = value_norm
     return vals
 
+# Extract Global Human Modification (ghm) value for a given point
+def extract_ghm_for_point(lon, lat, ghm_raster_fp):
+    """
+    Extract Global Human Modification (ghm) value for a given point (lon, lat) from the ghm raster.
+    Values are already normalized to be between 0 and 1.
+    0 = no human modification, 1 = maximum human modification.
+    """
+    with rasterio.open(ghm_raster_fp) as src:
+        # Reproject raster to WGS84
+        if src.crs.to_string() != 'EPSG:4326':
+            src = src.reproject('EPSG:4326')
+        # Get pixel coordinates of the point
+        coords = (lon, lat)
+        value = list(src.sample([coords]))[0][0]  # Get the first band value
+        return value
+
+def compute_dem_stats(dem_raster_fp):
+    """
+    Compute mean and standard deviation of the DEM raster.
+    Normalization step prior to training models
+    """
+    with rasterio.open(dem_raster_fp) as src:
+        data = src.read(1)  # Read the first band
+        if src.nodata is not None:
+            data = np.ma.masked_equal(data, src.nodata)
+        else:
+            data = np.ma.masked_where((data < -1e5) | (data > 1e5), data)
+
+        mean = data.mean()
+        std = data.std()
+
+    return {"mean": float(mean), "std": float(std)}
+
+# Extract DEM value for a given point
+def extract_dem_for_point(lon, lat, dem_raster_fp, normalization_stats=None):
+    """
+    Extract DEM value for a given point (lon, lat) from the DEM raster.
+    Normalizes the value using precomputed mean and std of the DEM band.
+    """
+    with rasterio.open(dem_raster_fp) as src:
+        # Reproject raster to WGS84
+        if src.crs.to_string() != 'EPSG:4326':
+            src = src.reproject('EPSG:4326')
+        # Get pixel coordinates of the point
+        coords = (lon, lat)
+        value = list(src.sample([coords]))[0][0]  # Get the first band value
+        # Normalize the value using precomputed mean and std of the DEM band
+        mean = normalization_stats['mean']
+        std = normalization_stats['std']
+        value_norm = (value - mean) / std  # Normalize
+        return value_norm
+
 # Extract NAIP chips for each point in the dataset
 def extract_chip_for_point(lon, lat, out_fp, chip_size, tileindex, naip_folder):
     """
@@ -379,23 +458,24 @@ def extract_chip_for_point(lon, lat, out_fp, chip_size, tileindex, naip_folder):
 
 ### Sample NAIP chips and WorldClim variables for each point in the CV dataset ###
 # Paths
-cv_geojson_base = r"D:\Ailanthus_NAIP_Classification\Ailanthus_Occurrences"
-output_base = r"D:\Ailanthus_NAIP_Classification"
-chip_size = 256
+cv_geojson_base = r"D:\Ailanthus_NAIP_Classification"
+
+chip_size = 1024 # Size of chip in pixels (256x256)
 
 # Load tileindex and compute Worldclim normalization stats once
 tileindex = gpd.read_file(tileindex_fp).to_crs(epsg=4326)
-wc_stats = compute_worldclim_stats(worldclim_folder, downloaded_union)
+wc_normalization_stats = compute_worldclim_stats(worldclim_folder, downloaded_union)
+dem_normalization_stats = compute_dem_stats(elevation_raster_fp)
 
 # Loop through each CV round and extract data
 for cv_round in [1, 2, 3]:
     print(f"\n=== Processing CV Round {cv_round} ===")
 
     # Load GeoJSON for this round
-    gdf = gpd.read_file(os.path.join(cv_geojson_base, f"Ailanthus_Pres_Pseudoabs_NC_CV{cv_round}.geojson"))
+    gdf = gpd.read_file(os.path.join(cv_geojson_base, f"Ailanthus_Pres_Pseudoabs_NC_SpatialCV_Fold{round_num}_July25.geojson"))
 
     # Create CV round-specific folder
-    cv_dir = os.path.join(output_base, f"CV{cv_round}")
+    cv_dir = os.path.join(cv_geojson_base, f"CV{cv_round}")
     chip_dir = os.path.join(cv_dir, "chips")
     os.makedirs(chip_dir, exist_ok=True)
 
@@ -425,7 +505,11 @@ for cv_round in [1, 2, 3]:
             continue
 
         # Extract WorldClim variables
-        wc_vars = extract_worldclim_vars_for_point(lon, lat, worldclim_folder, wc_stats)
+        wc_vars = extract_worldclim_vars_for_point(lon, lat, worldclim_folder, wc_normalization_stats)
+        ghm_vars = extract_ghm_for_point(lon, lat, ghm_raster_fp)
+        dem_vars = extract_dem_for_point(lon, lat, elevation_raster_fp, dem_normalization_stats)
+        wc_vars['ghm'] = ghm_vars  # Add gHM value to WorldClim variables
+        wc_vars['dem'] = dem_vars  # Add DEM value to WorldClim variables
 
         # Create sample record
         record = {
