@@ -1,0 +1,18 @@
+{
+    "experiment": "ailanthus_naip_climate_cnn_july25",
+    "csv_path": "D:\\Ailanthus_NAIP_Classification\\Datasets\\Ailanthus_Uniform_PA_NAIP_256_July25\\Ailanthus_Train_Val_Test.csv",
+    "image_dir": "D:\\Ailanthus_NAIP_Classification\\Datasets\\Ailanthus_Uniform_PA_NAIP_256_July25",
+    "batch_size": 64,
+    "epochs": 100,
+    "learning_rate": 0.0001,
+    "lr_patience": 10,
+    "es_patience": 20,
+    "env_features": ["wc2.1_30s_bio_1", "wc2.1_30s_bio_2", "wc2.1_30s_bio_3", "wc2.1_30s_bio_4", "wc2.1_30s_bio_5", 
+    "wc2.1_30s_bio_6", "wc2.1_30s_bio_7", "wc2.1_30s_bio_8", "wc2.1_30s_bio_9", "wc2.1_30s_bio_10", "wc2.1_30s_bio_11", 
+    "wc2.1_30s_bio_12", "wc2.1_30s_bio_13", "wc2.1_30s_bio_14", "wc2.1_30s_bio_15", "wc2.1_30s_bio_16", "wc2.1_30s_bio_17", 
+    "wc2.1_30s_bio_18", "wc2.1_30s_bio_19",  "ghm", "dem"],
+    "checkpoint_dir": "checkpoints",
+    "log_path": "logs\\naip_model_log.log",
+    "output_history_csv": "D:\\Ailanthus_NAIP_Classification\\Datasets\\Ailanthus_Uniform_PA_NAIP_256_July25\\outputs\\naip_model_history.csv",
+    "output_dir": "D:\\Ailanthus_NAIP_Classification\\Datasets\\Ailanthus_Uniform_PA_NAIP_256_July25\\outputs"
+}
