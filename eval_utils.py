@@ -1,4 +1,5 @@
-# Evaluation utilities for model training and validation
+# Evaluation utilities for NAIP imagery and environmental variables model
+# Thomas Lake, July 2025
 
 import os
 import torch
@@ -8,18 +9,13 @@ from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, classifica
 
 
 @torch.no_grad()
-def evaluate(model, val_loader):
-    model.eval()
-    outputs = [model.validation_step(batch) for batch in val_loader]
-    return model.validation_epoch_end(outputs)
-
 def test_model(model, test_loader, device, out_dir="model_results"):
     """
     Evaluate the model on the testing dataset and save results
     """
 
     model.to(device)
-    model.eval
+    model.eval # Set model to evaluation mode for testing
     y_pred = []
     y_true = []
 

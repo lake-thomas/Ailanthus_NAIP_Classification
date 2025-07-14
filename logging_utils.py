@@ -1,6 +1,5 @@
-# Description
-# Author
-
+# Logging utilities for NAIP Host Model
+# Thomas Lake, July 2025
 
 import logging
 import os

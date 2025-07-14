@@ -1,5 +1,5 @@
-# Decsription
-# Author
+# Pytorch data classes for host tree classification using NAIP imagery and environmental variables
+# Thomas Lake, July 2025
 
 import os
 import pandas as pd
@@ -7,7 +7,6 @@ import numpy as np
 import rasterio
 import torch
 from torch.utils.data import Dataset
-from torchvision import transforms
 
 # Create Pytorch Dataset for NAIP imagery and Environmental Variables
 

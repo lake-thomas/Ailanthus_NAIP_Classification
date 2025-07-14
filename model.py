@@ -1,22 +1,15 @@
-# Description
-# Author
+# Pytorch model classes for host tree classification using NAIP imagery and environmental variables
+# Thomas Lake, July 2025
 
-import os
-import pandas as pd
-import numpy as np
-import rasterio
 import torch
 import torch.nn as nn
-from torch.utils.data import Dataset
-from torchvision import transforms
 from torchvision import models
-from torchvision.models import resnet18, ResNet18_Weights
-from torch.utils.data import DataLoader
+from torchvision.models import ResNet18_Weights
 import torch.nn.functional as F
 
-class HostModelBase(torch.nn.Module):
+class HostImageClimateModelBase(torch.nn.Module):
     """
-    Description
+    Base class for Imagery Climate Model
     """
     def training_step(self, batch):
         """
@@ -83,18 +76,38 @@ def get_resnet_model(pretrained=True):
     return model
 
 
-class HostImageryClimateModel(HostModelBase):
+class HostImageryClimateModel(HostImageClimateModelBase):
     """
-    Inherits from HostModelBase and combines NAIP imagery with environmental variables
+    Inherits from HostImageClimateModelBase and combines NAIP imagery with environmental variables
     to predict the presence of a species.
     Args:
         num_env_features (int): Number of environmental features.
         hidden_dim (int): Dimension of the hidden layer in the classifier.
     """
-    def __init__(self, num_env_features, hidden_dim=256):
+    def __init__(self, num_env_features, hidden_dim=256, dropout=0.25):
         super().__init__()
         self.resnet = get_resnet_model(pretrained=True)
         self.resnet.fc = nn.Identity() # Remove the final fully connected layer
+
+        # MLP from Gillespie et al., 2024
+        # self.climate_mlp = nn.Sequential(
+        #     nn.Linear(num_env_features, 1000),
+        #     nn.ELU(),
+        #     nn.Linear(1000, 1000),
+        #     nn.ELU(),
+        #     nn.Linear(1000, 2000),
+        #     nn.ELU(),
+        #     nn.Dropout(0.25),
+        #     nn.Linear(2000, 2000),
+        #     nn.ELU()
+        # )
+
+        # self.classifier = nn.Sequential(
+        #     nn.Linear(512 + 2000, hidden_dim),  # 512 from Resnet18 or 2048 from ResNet50 + 64 from climate features
+        #     nn.ReLU(),
+        #     nn.Linear(hidden_dim, 1),  # Binary classification
+        #     nn.Sigmoid()  # Output between 0 and 1
+        # )
 
         self.climate_mlp = nn.Sequential(
             nn.Linear(num_env_features, 128),
@@ -107,7 +120,7 @@ class HostImageryClimateModel(HostModelBase):
         self.classifier = nn.Sequential(
             nn.Linear(512 + 64, hidden_dim),  # 512 from Resnet18 or 2048 from ResNet50 + 64 from climate features
             nn.ReLU(),
-            nn.Dropout(0.25),
+            nn.Dropout(dropout),
             nn.Linear(hidden_dim, 1),  # Binary classification
             nn.Sigmoid()  # Output between 0 and 1
         )

@@ -1,14 +1,12 @@
-# Description
-# Author
+# Utilities for training host imagery climate model
+# Thomas Lake, July 2025
 
 import os
 import torch
 import torch.cuda.amp as amp
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from model import HostImageryClimateModel
-
-from eval_utils import evaluate
-
+import wandb
 
 def get_default_device():
     """ Set Device to GPU or CPU"""
@@ -46,6 +44,12 @@ def load_model_from_checkpoint(checkpoint_path: str, env_vars: list) -> torch.nn
     return model, optimizer
 
 
+def evaluate(model, val_loader):
+    model.eval()
+    outputs = [model.validation_step(batch) for batch in val_loader]
+    return model.validation_epoch_end(outputs)
+
+
 def fit(epochs, lr, model, train_loader, val_loader, optimizer, outpath, lr_patience=5, es_patience=10, use_fp16=True):
     """
     Train the model for a specified number of epochs with learning rate scheduling and early stopping
@@ -78,6 +82,14 @@ def fit(epochs, lr, model, train_loader, val_loader, optimizer, outpath, lr_pati
         result['train_loss'] = torch.stack(train_losses).mean().item()
         model.epoch_end(epoch, result)
         history.append(result)
+
+        # Log to W&B
+        wandb.log({
+            'epoch': epoch,
+            'train_loss': result['train_loss'],
+            'val_loss': result['val_loss'],
+            'val_acc': result['val_acc']
+        })
 
         # Learning rate adjustment
         scheduler.step(result['val_loss'])
