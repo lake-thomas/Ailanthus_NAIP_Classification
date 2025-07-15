@@ -10,10 +10,10 @@ import json
 import pandas as pd
 import torch
 from torch.utils.data import DataLoader
-from model import HostImageryClimateModel
+from model import HostImageryClimateModel, HostImageryOnlyModel, HostClimateOnlyModel
 from datasets import HostNAIPDataset
 from transforms import RandomAugment4Band
-from eval_utils import test_model, plot_accuracies, plot_losses
+from eval_utils import test_model, plot_accuracies, plot_losses, map_model_errors
 from train_utils import fit
 from logging_utils import setup_logging
 
@@ -29,19 +29,6 @@ def main():
     with open(args.config, 'r') as f:
         config = json.load(f)
 
-    # Init and override config with W&B sweep values for hyperparameter search
-    wandb.init(entity="talake2-ncsu",
-               project="naip_climate_classification")
-    if wandb.run:
-        config['batch_size'] = wandb.config.get('batch_size', config['batch_size'])
-        config['learning_rate'] = wandb.config.get('learning_rate', config['learning_rate'])
-        sweep_run_id = wandb.run.name  # e.g., "sweep-1"
-        config["experiment"] += f"_{sweep_run_id}"
-        config['dropout'] = wandb.config.get('dropout', config.get('dropout', 0.25))
-        config['hflip_prob'] = wandb.config.get('hflip_prob', config.get('hflip_prob', 0.5))
-        config['vflip_prob'] = wandb.config.get('vflip_prob', config.get('vflip_prob', 0.5))
-        config['rotation_degrees'] = wandb.config.get('rotation_degrees', config.get('rotation_degrees', 45))
-
     # Create experiment subdirectory
     experiment_name = config.get('experiment')
     experiment_dir = os.path.join(config['output_dir'], experiment_name)
@@ -54,6 +41,20 @@ def main():
     # Logging
     log_path = os.path.join(experiment_dir, f"{experiment_name}.log")
     setup_logging(log_path)
+
+    # Init W&B and override config with W&B sweep values for hyperparameter search
+    wandb.init(name = experiment_name, entity="talake2-ncsu", project="naip_climate_classification")
+
+    if wandb.run:
+        config['epcohs'] = wandb.config.get('epochs', config['epochs'])
+        config['batch_size'] = wandb.config.get('batch_size', config['batch_size'])
+        config['learning_rate'] = wandb.config.get('learning_rate', config['learning_rate'])
+        sweep_run_id = wandb.run.name 
+        config["experiment"] += f"_{sweep_run_id}"
+        config['dropout'] = wandb.config.get('dropout', config.get('dropout', 0.25))
+        # config['hflip_prob'] = wandb.config.get('hflip_prob', config.get('hflip_prob', 0.5))
+        # config['vflip_prob'] = wandb.config.get('vflip_prob', config.get('vflip_prob', 0.5))
+        # config['rotation_degrees'] = wandb.config.get('rotation_degrees', config.get('rotation_degrees', 45))
 
     # Device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -77,14 +78,24 @@ def main():
     test_dl = DataLoader(test_ds, batch_size=config['batch_size'], shuffle=False, num_workers=4)
 
     # Model
-    dropout = config.get('dropout', 0.25)  # Default dropout if not specified
-    model = HostImageryClimateModel(num_env_features=len(env_vars), dropout=dropout).to(device)
+    dropout = config.get('dropout', 0.50)  # Default dropout if not specified
+    print("Using dropout:", dropout)
+
+    model_type = config.get("model_type", "image_climate") # Default to combined model
+    if model_type == "image_climate":
+        model = HostImageryClimateModel(num_env_features=len(env_vars), dropout=dropout).to(device)
+    elif model_type == "image_only":
+        model = HostImageryOnlyModel(dropout=dropout).to(device)
+    elif model_type == "climate_only":
+        model = HostClimateOnlyModel(num_env_features=len(env_vars), dropout=dropout).to(device)
+    else:
+        raise ValueError(f"Unknown model_type: {model_type}")
+
     optimizer = torch.optim.Adam(model.parameters(), lr=config['learning_rate'])
 
     # Log the Model Arguments 
     logging.info(f"Model Arguments: {json.dumps(config, indent=4)}")
     wandb.config.update({"dropout": dropout}, allow_val_change=True)
-
 
     start_time = time.time()
 
@@ -117,6 +128,8 @@ def main():
     # Model Evaluation and Confusion Matrix
     test_model(model, test_dl, device, experiment_dir)
 
+    # Map Model Errors - To DO: Revise Lat/ Lon Columns in Dataset
+    # map_model_errors(model, test_dl, device, experiment_dir)
 
 if __name__ == "__main__":
     main()

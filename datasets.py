@@ -24,7 +24,7 @@ class HostNAIPDataset(Dataset):
         self.image_base_dir = image_base_dir
 
         # Get all columns starting with 'wc2.1_30s' and dem and ghm
-        self.environment_features = [col for col in self.df.columns if col.startswith('wc2.1_30s') or col in ['dem', 'ghm']]
+        self.environment_features = [col for col in self.df.columns if col.startswith('wc2.1_30s') or col in ['dem', 'ghm', 'lat', 'lon']]
 
         self.transform = transform
 
