@@ -98,9 +98,8 @@ def map_model_errors(model, test_loader, device, out_dir="model_results"):
         y_true.extend(labels.cpu().numpy())
         
         # Collect lat/lon from the batch
-        print(envs)
-        lat = envs[:, -2].cpu().numpy()  # Assuming lat is the second last feature
-        lon = envs[:, -1].cpu().numpy()  # Assuming lon is the last feature
+        lat = envs[:, 0].cpu().numpy()  # Lat is the 5th column in the environment features
+        lon = envs[:, 1].cpu().numpy()  # Lon is the 6th column in the environment features
         lat_list.extend(lat)
         lon_list.extend(lon)
 
@@ -118,9 +117,22 @@ def map_model_errors(model, test_loader, device, out_dir="model_results"):
     df.loc[(df.true_label == 0) & (df.predicted_label == 1), "error_type"] = "FP"
     df.loc[(df.true_label == 1) & (df.predicted_label == 0), "error_type"] = "FN"
 
-    print(df)
     # Save DataFrame to CSV
     df.to_csv(os.path.join(out_dir, "spatial_predictions.csv"), index=False)
+
+    # Plot Errors on Map
+    color_map = {"TP": "green", "TN": "blue", "FP": "red", "FN": "orange"}
+    plt.figure(figsize=(8, 6))
+    for err_type, color in color_map.items():
+        subset = df[df["error_type"] == err_type]
+        plt.scatter(subset["lon"], subset["lat"], c=color, label=err_type, alpha=0.6, s=10)
+
+    plt.xlabel("Longitude")
+    plt.ylabel("Latitude")
+    plt.title("Spatial Distribution of Prediction Errors")
+    plt.legend()
+    plt.savefig(os.path.join(out_dir, "spatial_errors.png"), dpi=300)
+    plt.close()
 
 
 def plot_roc_curve(y_true, y_pred, out_dir="model_results"):

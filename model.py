@@ -7,29 +7,6 @@ from torchvision import models
 from torchvision.models import ResNet18_Weights
 import torch.nn.functional as F
 
-# Functions
-def get_resnet_model(pretrained=True):
-    """
-    Create a ResNet model that accepts 4-channel input (NAIP RGB + NIR)
-    """
-    model = models.resnet18(weights=ResNet18_Weights.DEFAULT)
-    # Modify the first convolution layer to accept 4 channels instead of 3
-    original_conv = model.conv1
-    model.conv1 = nn.Conv2d(in_channels=4,
-                            out_channels=original_conv.out_channels,
-                            kernel_size=original_conv.kernel_size,
-                            stride=original_conv.stride,
-                            padding=original_conv.padding,
-                            bias=original_conv.bias is not None)
-    
-    # Initalize the new conv layer weights for the 4th channel as the mean of the first 3 channels
-    with torch.no_grad():
-        model.conv1.weight[:, :3, :, :] = original_conv.weight
-        model.conv1.weight[:, 3, :, :] = original_conv.weight.mean(dim=1)
-
-    return model
-
-# Classes
 class HostImageClimateModelBase(torch.nn.Module):
     """
     Base class for Imagery Climate Model
@@ -95,6 +72,28 @@ class HostImageClimateModelBase(torch.nn.Module):
         print(f"Epoch [{epoch+1}], train_loss: {result['train_loss']:.4f}, val_loss: {result['val_loss']:.4f}, val_acc: {result['val_acc']:.4f}")
 
 
+def get_resnet_model(pretrained=True):
+    """
+    Create a ResNet model that accepts 4-channel input (NAIP RGB + NIR)
+    """
+    model = models.resnet18(weights=ResNet18_Weights.DEFAULT)
+    # Modify the first convolution layer to accept 4 channels instead of 3
+    original_conv = model.conv1
+    model.conv1 = nn.Conv2d(in_channels=4,
+                            out_channels=original_conv.out_channels,
+                            kernel_size=original_conv.kernel_size,
+                            stride=original_conv.stride,
+                            padding=original_conv.padding,
+                            bias=original_conv.bias is not None)
+    
+    # Initalize the new conv layer weights for the 4th channel as the mean of the first 3 channels
+    with torch.no_grad():
+        model.conv1.weight[:, :3, :, :] = original_conv.weight
+        model.conv1.weight[:, 3, :, :] = original_conv.weight.mean(dim=1)
+
+    return model
+
+
 class HostImageryClimateModel(HostImageClimateModelBase):
     """
     Inherits from HostImageClimateModelBase and combines NAIP imagery with environmental variables
@@ -108,7 +107,7 @@ class HostImageryClimateModel(HostImageClimateModelBase):
         self.resnet = get_resnet_model(pretrained=True)
         self.resnet.fc = nn.Identity() # Remove the final fully connected layer
 
-        # Larger MLP increases val. acc. and use Linear + ReLU + BN 
+        # MLP 
         self.climate_mlp = nn.Sequential(
             nn.Linear(num_env_features, 1000),
             nn.ReLU(),
@@ -126,7 +125,7 @@ class HostImageryClimateModel(HostImageClimateModelBase):
             nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(hidden_dim, 1),  # Binary classification
-            nn.Sigmoid()  # Output between 0 and 1
+            # nn.Sigmoid()  # Output between 0 and 1
         )
 
         # Shallower MLP alternative
@@ -188,46 +187,24 @@ class HostClimateOnlyModel(HostImageClimateModelBase):
     """
     def __init__(self, num_env_features, hidden_dim=256, dropout=0.25):
         super().__init__()
-        
-        # MLP
         self.climate_mlp = nn.Sequential(
-            nn.Linear(num_env_features, 1000),
+            nn.Linear(num_env_features, 128),
             nn.ReLU(),
-            nn.BatchNorm1d(1000),
-            nn.Linear(1000, 2000),
-            nn.ReLU(),
-            nn.BatchNorm1d(2000),
-            nn.Linear(2000, 2000),
-            nn.ReLU(),
-            nn.BatchNorm1d(2000)
+            nn.BatchNorm1d(128),
+            nn.Linear(128, 64),
+            nn.ReLU()
         )
 
         self.classifier = nn.Sequential(
-            nn.Linear(2000, hidden_dim), 
+            nn.Linear(64, hidden_dim),
             nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(hidden_dim, 1),  # Binary classification
             nn.Sigmoid()  # Output between 0 and 1
         )
-        
-        # Shallower MLP
-        # self.climate_mlp = nn.Sequential(
-        #    nn.Linear(num_env_features, 128),
-        #    nn.ReLU(),
-        #    nn.BatchNorm1d(128),
-        #    nn.Linear(128, 64),
-        #    nn.ReLU()
-        #)
-
-        #self.classifier = nn.Sequential(
-        #    nn.Linear(64, hidden_dim),
-        #    nn.ReLU(),
-        #    nn.Dropout(dropout),
-        #    nn.Linear(hidden_dim, 1),  # Binary classification
-        #    nn.Sigmoid()  # Output between 0 and 1
-        #)
 
     def forward(self, env):
         env_feat = self.climate_mlp(env)  # Shape: (batch_size, 64)
         out = self.classifier(env_feat) # Shape: (batch_size, 1)
         return out.squeeze(1) # Return shape (batch_size,)
+

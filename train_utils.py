@@ -33,6 +33,7 @@ def save_checkpoint(model, epoch, optimizer, path="checkpoints"):
 def load_model_from_checkpoint(checkpoint_path: str, env_vars: list) -> torch.nn.Module:
     """
     Load model and optimizer state from a checkpoint file for evaluation
+    To Do: Load different model architectures (HostImageryClimateModel, HostImageryOnlyModel, HostClimateOnlyModel) based on the checkpoint
     """
     device = get_default_device()
     checkpoint = torch.load(checkpoint_path)
