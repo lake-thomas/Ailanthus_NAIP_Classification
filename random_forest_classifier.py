@@ -2,6 +2,7 @@
 
 import os
 import joblib
+import glob
 import numpy as np
 import pandas as pd
 import geopandas as gpd
@@ -60,6 +61,8 @@ X_train = sample_rasters_at_points(
 )
 y_train = train_df['presence'].values
 
+print(X_train.head())
+
 print("Sampling raster values for VAL set...")
 X_val = sample_rasters_at_points(
     lat=val_df['lat'], lon=val_df['lon'],
@@ -103,12 +106,14 @@ print(f"Best parameters: {grid.best_params_}")
 best_model = grid.best_estimator_
 joblib.dump(best_model, model_save_path)
 
+# ------------ EVALUATE MODEL ----------------
 for split, X_split, y_split in [
     ('Validation', X_val, y_val),
     ('Test', X_test, y_test)
 ]:
     print(f"{split}:")
     print(classification_report(y_split, best_model.predict(X_split)))
+
 
 # ------------- FEATURE IMPORTANCE ----------------
 importances = best_model.feature_importances_
@@ -211,6 +216,7 @@ valid = ~np.isnan(sampled_preds)
 y_true = y_test[valid]
 y_pred_prob = sampled_preds[valid]
 
+# Plot histogram of predicted probabilities
 plt.figure(figsize=(10, 6))
 plt.hist(y_pred_prob, bins=50)
 plt.title("Histogram of Predicted Probabilities at Test Points")
@@ -218,6 +224,7 @@ plt.xlabel("Predicted Probability")
 plt.ylabel("Frequency")
 plt.show()
 
+# Evaluate performance at test locations
 threshold = 0.5
 y_pred_binary = (y_pred_prob >= threshold).astype(int)
 print("Performance at Test Locations (Raster Sampling):")
@@ -228,3 +235,34 @@ print("F1 Score:", f1_score(y_true, y_pred_binary))
 print("ROC AUC:", roc_auc_score(y_true, y_pred_prob))
 print("\nConfusion Matrix:")
 print(confusion_matrix(y_true, y_pred_binary))
+
+# ------------- FORMATTED CLASSIFICATION REPORT ----------------
+print("\nGenerating formatted classification report...")
+target_names = ['Negative', 'Positive']
+
+report_dict = classification_report(
+    y_true, y_pred_binary, target_names=target_names, output_dict=True
+)
+
+report_df = pd.DataFrame(report_dict).T
+report_df = report_df[['precision', 'recall', 'f1-score', 'support']]
+report_df[['precision', 'recall', 'f1-score']] = report_df[['precision', 'recall', 'f1-score']].round(9)
+report_df['support'] = report_df['support'].fillna(0).astype(int)
+
+# Set support for accuracy explicitly
+report_df.loc['accuracy', 'support'] = len(y_true)
+
+print("\nFormatted Classification Report:")
+print(report_df.to_string())
+
+
+# Save the formatted classification report to a CSV file
+report_csv_path = r"D:\Ailanthus_NAIP_Classification\rf_model\rf_classification_report.csv"
+report_df.to_csv(report_csv_path, index=True)
+
+
+
+
+
+
+
