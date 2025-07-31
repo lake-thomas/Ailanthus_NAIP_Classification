@@ -13,7 +13,7 @@ from torch.utils.data import Dataset
 class HostNAIPDataset(Dataset):
     def __init__(self, csv_path, image_base_dir, split='train', environment_features=None, transform=None):
         """
-        csv_path: Path to the CSV file with meatadata like NAIP images and environmental features
+        csv_path: Path to the CSV file with meatadata like NAIP image paths and environmental features
         image_base_dir: Base directory where NAIP images are stored, corresponds to the chip_path column in the CSV
         split: 'train', 'val', or 'test' to specify the dataset split and filter the DataFrame accordingly
         environment_features: List of environmental feature columns to include in the dataset
@@ -23,8 +23,8 @@ class HostNAIPDataset(Dataset):
         self.df = self.df[self.df['split'] == split].reset_index(drop=True) 
         self.image_base_dir = image_base_dir
 
-        # Get all columns starting with 'wc2.1_30s' and dem and ghm
-        self.environment_features = [col for col in self.df.columns if col.startswith('wc2.1_30s') or col in ['dem', 'ghm', 'lat', 'lon']]
+        # Get all columns starting with 'wc2.1_30s' and Global Human Modification (ghm) as environment features
+        self.environment_features = [col for col in self.df.columns if col.startswith('wc2.1_30s') or col in ['ghm']]
 
         self.transform = transform
 

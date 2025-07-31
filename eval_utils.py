@@ -37,7 +37,7 @@ def test_model(model, test_loader, device, out_dir="model_results"):
         else:
             raise NotImplementedError("Unknown model type for test_model")
 
-        preds = (outputs > 0.5).float()
+        preds = (outputs > 0.5).float() # Use 0.5 threshold for binary classification
         y_pred.extend(preds.cpu().numpy())
         y_true.extend(labels.cpu().numpy())
 

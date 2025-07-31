@@ -5,7 +5,7 @@ import os
 import torch
 import torch.cuda.amp as amp
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-from model import HostImageryClimateModel
+from model import HostImageryClimateModel, HostClimateOnlyModel, HostImageryOnlyModel
 import wandb
 
 def get_default_device():
@@ -23,6 +23,7 @@ def save_checkpoint(model, epoch, optimizer, path="checkpoints"):
     os.makedirs(path, exist_ok=True)
     filename = f"checkpoint_epoch_{epoch}.tar"
     torch.save({
+        'model_type': model.__class__.__name__, # Model Class, either HostImageryClimateModel, HostImageryOnlyModel, or HostClimateOnlyModel
         'epoch': epoch,
         'model_state_dict': model.state_dict(),
         'optimizer_state_dict': optimizer.state_dict(),
@@ -30,14 +31,27 @@ def save_checkpoint(model, epoch, optimizer, path="checkpoints"):
     print(f"Checkpoint saved to {os.path.join(path, filename)}")
     
 
-def load_model_from_checkpoint(checkpoint_path: str, env_vars: list) -> torch.nn.Module:
+def load_model_from_checkpoint(checkpoint_path: str, env_vars: list, hidden_dim=256, dropout=0.25) -> torch.nn.Module:
     """
     Load model and optimizer state from a checkpoint file for evaluation
     To Do: Load different model architectures (HostImageryClimateModel, HostImageryOnlyModel, HostClimateOnlyModel) based on the checkpoint
     """
     device = get_default_device()
     checkpoint = torch.load(checkpoint_path)
-    model = HostImageryClimateModel(num_env_features=len(env_vars)).to(device)
+    model_type = checkpoint.get('model_type', 'HostImageryClimateModel')  # Default to HostImageryClimateModel if not specified
+    
+    num_env_features = len(env_vars)
+    
+    # Dynamically create model based on type
+    if model_type == 'HostImageryClimateModel':
+        model = HostImageryClimateModel(num_env_features=num_env_features, hidden_dim=hidden_dim, dropout=dropout).to(device)
+    elif model_type == 'HostImageryOnlyModel':
+        model = HostImageryOnlyModel(hidden_dim=hidden_dim, dropout=dropout).to(device)
+    elif model_type == 'HostClimateOnlyModel':
+        model = HostClimateOnlyModel(num_env_features=num_env_features, hidden_dim=hidden_dim, dropout=dropout).to(device)
+    else:
+        raise ValueError(f"Unknown model type: {model_type}. Expected one of ['HostImageryClimateModel', 'HostImageryOnlyModel', 'HostClimateOnlyModel']")
+    
     optimizer = torch.optim.Adam(model.parameters())
     model.load_state_dict(checkpoint['model_state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
@@ -69,6 +83,7 @@ def fit(epochs, lr, model, train_loader, val_loader, optimizer, outpath, lr_pati
         train_losses = []
 
         for batch in train_loader:
+            # Use half-precision training
             with torch.autocast(device_type='cuda', dtype=torch.float16):
                 loss = model.training_step(batch)
                 train_losses.append(loss)

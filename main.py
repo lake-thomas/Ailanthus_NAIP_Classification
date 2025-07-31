@@ -3,21 +3,27 @@
 
 # Imports
 import os
-import time
-import logging
-import argparse
-import json
-import pandas as pd
-import torch
-from torch.utils.data import DataLoader
-from model import HostImageryClimateModel, HostImageryOnlyModel, HostClimateOnlyModel
-from datasets import HostNAIPDataset
-from transforms import RandomAugment4Band
-from eval_utils import test_model, plot_accuracies, plot_losses, map_model_errors
-from train_utils import fit
-from logging_utils import setup_logging
 
-import wandb
+conda_env = r"C:\Users\talake2\AppData\Local\anaconda3\envs\naip_ailanthus_env"
+os.environ["GDAL_DATA"] = os.path.join(conda_env, "Library", "share", "gdal")
+os.environ["PROJ_LIB"] = os.path.join(conda_env, "Library", "share", "proj")
+os.environ["PATH"] += os.pathsep + os.path.join(conda_env, "Library", "bin")
+
+import time  # noqa: E402
+import logging # noqa: E402
+import argparse # noqa: E402
+import json # noqa: E402
+import pandas as pd # noqa: E402
+import torch # noqa: E402
+from torch.utils.data import DataLoader # noqa: E402
+from model import HostImageryClimateModel, HostImageryOnlyModel, HostClimateOnlyModel # noqa: E402
+from datasets import HostNAIPDataset # noqa: E402
+from transforms import RandomAugment4Band # noqa: E402
+from eval_utils import test_model, plot_accuracies, plot_losses, map_model_errors # noqa: E402
+from train_utils import fit # noqa: E402
+from logging_utils import setup_logging # noqa: E402
+
+import wandb  # noqa: E402
 
 def main():
     # Argument Parser
@@ -45,19 +51,17 @@ def main():
     # Init W&B and override config with W&B sweep values for hyperparameter search
     wandb.init(name = experiment_name, entity="talake2-ncsu", project="naip_climate_classification")
 
-    if wandb.run:
+    if wandb.run: # True if running in a W&B sweep
+        sweep_run_id = wandb.run.name
+        config["experiment"] += f"_{sweep_run_id}"
         config['epcohs'] = wandb.config.get('epochs', config['epochs'])
         config['batch_size'] = wandb.config.get('batch_size', config['batch_size'])
         config['learning_rate'] = wandb.config.get('learning_rate', config['learning_rate'])
-        sweep_run_id = wandb.run.name 
-        config["experiment"] += f"_{sweep_run_id}"
-        config['dropout'] = wandb.config.get('dropout', config.get('dropout', 0.25))
-        # config['hflip_prob'] = wandb.config.get('hflip_prob', config.get('hflip_prob', 0.5))
-        # config['vflip_prob'] = wandb.config.get('vflip_prob', config.get('vflip_prob', 0.5))
-        # config['rotation_degrees'] = wandb.config.get('rotation_degrees', config.get('rotation_degrees', 45))
+        config['dropout'] = wandb.config.get('dropout', config.get('dropout', 0.25)) # Default dropout of 0.25 if not specified
 
     # Device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
 
     # Image Transformations
     image_transform = RandomAugment4Band(
@@ -67,7 +71,7 @@ def main():
     )
 
     # Dataset
-    env_vars = config['env_features'] # List of environmental variables
+    env_vars = config['env_features'] # List of environmental variables (WorldClim, GHM, DEM, etc.)
     train_ds = HostNAIPDataset(config['csv_path'], config['image_dir'], 'train', env_vars, transform=image_transform)
     val_ds = HostNAIPDataset(config['csv_path'], config['image_dir'], 'val', env_vars)
     test_ds = HostNAIPDataset(config['csv_path'], config['image_dir'], 'test', env_vars)
@@ -78,10 +82,11 @@ def main():
     test_dl = DataLoader(test_ds, batch_size=config['batch_size'], shuffle=False, num_workers=4)
 
     # Model
-    dropout = config.get('dropout', 0.50)  # Default dropout if not specified
+    dropout = config.get('dropout', 0.25)  # Default dropout if not specified
     print("Using dropout:", dropout)
 
-    model_type = config.get("model_type", "image_climate") # Default to combined model
+    model_type = config.get("model_type", "image_climate") # Default to combined NAIP + Env Model
+    print(model_type)
     if model_type == "image_climate":
         model = HostImageryClimateModel(num_env_features=len(env_vars), dropout=dropout).to(device)
     elif model_type == "image_only":
@@ -128,7 +133,7 @@ def main():
     # Model Evaluation and Confusion Matrix
     test_model(model, test_dl, device, experiment_dir)
 
-    # Map Model Errors - To DO: Revise Lat/ Lon Columns in Dataset
+    # Map Model Errors (Plot Testing Points by Error Type)
     # map_model_errors(model, test_dl, device, experiment_dir)
 
 if __name__ == "__main__":

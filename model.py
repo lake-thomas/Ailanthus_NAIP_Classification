@@ -30,7 +30,7 @@ class HostImageClimateModelBase(torch.nn.Module):
         else:
             raise NotImplementedError("Unknown model type for training_step")
 
-        loss = F.binary_cross_entropy_with_logits(out, labels)
+        loss = F.binary_cross_entropy_with_logits(out, labels) # Binary cross entropy loss 
         return loss
     
     def validation_step(self, batch):
@@ -76,6 +76,8 @@ def get_resnet_model(pretrained=True):
     """
     Create a ResNet model that accepts 4-channel input (NAIP RGB + NIR)
     """
+    # Load the ResNet18 model with pretrained weights
+    # Note: ResNet18 is commonly used in deep-sdms, using deeper models might not be necessary
     model = models.resnet18(weights=ResNet18_Weights.DEFAULT)
     # Modify the first convolution layer to accept 4 channels instead of 3
     original_conv = model.conv1
@@ -121,14 +123,14 @@ class HostImageryClimateModel(HostImageClimateModelBase):
         )
 
         self.classifier = nn.Sequential(
-            nn.Linear(512 + 2000, hidden_dim),  # 512 from Resnet18 or 2048 from ResNet50 + 64 from climate features
+            nn.Linear(512 + 2000, hidden_dim),  # 512 from Resnet18 or 2048 from ResNet50 + 2000 from climate features
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(hidden_dim, 1),  # Binary classification
-            # nn.Sigmoid()  # Output between 0 and 1
+            nn.Linear(hidden_dim, 1),  # Binary classification logits
+            nn.Sigmoid()  # Output between 0 and 1
         )
 
-        # Shallower MLP alternative
+        # Shallower MLP alternative has lower performance
         # self.climate_mlp = nn.Sequential(
         #     nn.Linear(num_env_features, 128),
         #     nn.ReLU(),
@@ -142,7 +144,6 @@ class HostImageryClimateModel(HostImageClimateModelBase):
         #     nn.ReLU(),
         #     nn.Dropout(dropout),
         #     nn.Linear(hidden_dim, 1),  # Binary classification
-        #     nn.Sigmoid()  # Output between 0 and 1
         # )
 
     def forward(self, img, env):
@@ -187,16 +188,22 @@ class HostClimateOnlyModel(HostImageClimateModelBase):
     """
     def __init__(self, num_env_features, hidden_dim=256, dropout=0.25):
         super().__init__()
+        
+        # MLP 
         self.climate_mlp = nn.Sequential(
-            nn.Linear(num_env_features, 128),
+            nn.Linear(num_env_features, 1000),
             nn.ReLU(),
-            nn.BatchNorm1d(128),
-            nn.Linear(128, 64),
-            nn.ReLU()
+            nn.BatchNorm1d(1000),
+            nn.Linear(1000, 2000),
+            nn.ReLU(),
+            nn.BatchNorm1d(2000),
+            nn.Linear(2000, 2000),
+            nn.ReLU(),
+            nn.BatchNorm1d(2000)
         )
 
         self.classifier = nn.Sequential(
-            nn.Linear(64, hidden_dim),
+            nn.Linear(2000, hidden_dim),
             nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(hidden_dim, 1),  # Binary classification
