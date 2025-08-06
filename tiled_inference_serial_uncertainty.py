@@ -132,7 +132,9 @@ def run_inference_on_tile(
         crs = src.crs
 
         sum_array = np.zeros((height, width), dtype=np.float32)
+        std_sum_array = np.zeros((height, width), dtype=np.float32)
         count_array = np.zeros((height, width), dtype=np.uint16)
+
 
         for row in range(0, height - chip_size + 1, stride):
             for col in range(0, width - chip_size + 1, stride):
@@ -161,25 +163,36 @@ def run_inference_on_tile(
                         chip = chip.astype(np.float32) / 255.0
                         chip_tensor = image_transform(np.moveaxis(chip, 0, -1)).unsqueeze(0).to(device)
 
-                    # Run inference
-                    with torch.no_grad():
-                        if isinstance(model, HostImageryClimateModel):
-                            prob = model(chip_tensor, env_tensor)
-                        elif isinstance(model, HostImageryOnlyModel):
-                            prob = model(chip_tensor)
-                        elif isinstance(model, HostClimateOnlyModel):
-                            prob = model(env_tensor)
-                        else:
-                            raise NotImplementedError("Unknown model type used in inference.")
+                    # Run inference with uncertainty (dropout enabled)
 
-                    sum_array[row:row + chip_size, col:col + chip_size] += float(prob)
+                    T = 10 # Number of stochastic forward passes for uncertainty estimation
+                    probs = []
+
+                    with torch.no_grad():
+                        for _ in range(T):
+                            if isinstance(model, HostImageryClimateModel):
+                                prob = model(chip_tensor, env_tensor)
+                            elif isinstance(model, HostImageryOnlyModel):
+                                prob = model(chip_tensor)
+                            elif isinstance(model, HostClimateOnlyModel):
+                                prob = model(env_tensor)
+                            else:
+                                raise NotImplementedError("Unknown model type used in inference.")
+                            probs.append(prob.cpu().item()) # Store the probability for one forward pass
+
+                    probs = np.array(probs)
+                    mean_prob = probs.mean()
+                    std_prob = probs.std()
+
+                    sum_array[row:row + chip_size, col:col + chip_size] += float(mean_prob)
+                    std_sum_array[row:row + chip_size, col:col + chip_size] += float(std_prob)
                     count_array[row:row + chip_size, col:col + chip_size] += 1
 
                 except Exception as e:
                     print(f"[{tile_name}] Error at row={row}, col={col}: {e}")
                     continue
 
-        # Average predictions
+        # --- Compute mean and std ---
         avg_array = np.divide(
             sum_array,
             count_array,
@@ -187,61 +200,77 @@ def run_inference_on_tile(
             where=(count_array > 0)
         )
 
-        # Scale to 0–255 and convert to Byte
-        byte_array = np.clip(avg_array * 255, 0, 255).astype(np.uint8)
+        std_avg_array = np.divide(
+            std_sum_array,
+            count_array,
+            out=np.full_like(std_sum_array, np.nan, dtype=np.float32),
+            where=(count_array > 0)
+        )
 
-        # Set NoData as 255 (must match dtype)
-        byte_array[np.isnan(avg_array)] = 255
-
-        # Reproject to EPSG:5070
+        # --- Reproject setup ---
         dst_crs = "EPSG:5070"
         dst_transform, dst_width, dst_height = calculate_default_transform(
             crs, dst_crs, src.width, src.height, *src.bounds
         )
 
-        # Create an empty destination array, filled with NoData value (255)
-        reprojected_array = np.full((dst_height, dst_width), 255, dtype=np.uint8)
+        # --- Reproject average prediction to float32 ---
+        reprojected_avg_array = np.full((dst_height, dst_width), -9999, dtype=np.float32)
 
-        # Reproject the Byte array
-        # Use src_transform=src.transform!
         reproject(
-            source=byte_array,
-            destination=reprojected_array,
-            src_transform=src.transform,  # source raster's transform
+            source=avg_array,
+            destination=reprojected_avg_array,
+            src_transform=src.transform,
             src_crs=crs,
             dst_transform=dst_transform,
             dst_crs=dst_crs,
             resampling=Resampling.bilinear,
-            src_nodata=255,
-            dst_nodata=255
+            src_nodata=np.nan,
+            dst_nodata=-9999
         )
 
-        # Update profile for the output raster
-        out_profile = profile.copy()
-        out_profile.update({
+        # --- Reproject standard deviation to float32 ---
+        reprojected_std_array = np.full((dst_height, dst_width), -9999, dtype=np.float32)
+
+        reproject(
+            source=std_avg_array,
+            destination=reprojected_std_array,
+            src_transform=src.transform,
+            src_crs=crs,
+            dst_transform=dst_transform,
+            dst_crs=dst_crs,
+            resampling=Resampling.bilinear,
+            src_nodata=np.nan,
+            dst_nodata=-9999
+        )
+
+        # --- Common raster profile ---
+        float_profile = profile.copy()
+        float_profile.update({
             "driver": "GTiff",
-            "dtype": "uint8",
+            "dtype": "float32",
             "count": 1,
             "width": dst_width,
             "height": dst_height,
             "crs": dst_crs,
             "transform": dst_transform,
-            "nodata": 255,  # <- Match NoData to array + reproject
+            "nodata": -9999,
             "compress": "lzw"
         })
 
-        # Save raster as float32 for better precision
-        # out_profile = profile.copy()
-        # out_profile.update({
-        #     "dtype": "float32",
-        #     "count": 1,
-        #     "nodata": -9999
-        # })
+        # --- Save mean prediction raster ---
+        with rasterio.open(output_fp, "w", **float_profile) as dst:
+            dst.write(reprojected_avg_array, 1)
 
-        with rasterio.open(output_fp, "w", **out_profile) as dst:
-            dst.write(reprojected_array, 1)
+        print(f"[{tile_name}] Saved float32 prediction to {output_fp}")
 
-        print(f"[{tile_name}] Saved prediction to {output_fp}")
+        # --- Save standard deviation (uncertainty) raster ---
+        std_output_fp = os.path.join(output_dir, f"{tile_name}_uncertainty.tif")
+
+        with rasterio.open(std_output_fp, "w", **float_profile) as dst:
+            dst.write(reprojected_std_array, 1)
+
+        print(f"[{tile_name}] Saved float32 uncertainty to {std_output_fp}")
+
 
 
 def main():
@@ -251,7 +280,7 @@ def main():
     worldclim_folder = r"D:\Ailanthus_NAIP_Classification\Env_Data\WorldClim"
     ghm_raster_fp = r"D:\Ailanthus_NAIP_Classification\Env_Data\Global_Human_Modification\gHM_WGS84.tif"
     # elevation_raster_fp = r"D:\Ailanthus_NAIP_Classification\Env_Data\DEM_SRTM\nc_dem_srtm.tif"
-    output_dir = r"D:\Ailanthus_NAIP_Classification\model_inference\test_dir"
+    output_dir = r"C:\Users\talake2\Desktop\Ailanthus_NAIP_Climate_Model_Inference_Uncertainty_Aug125"
 
     # Output directory
     os.makedirs(output_dir, exist_ok=True)
@@ -272,7 +301,16 @@ def main():
     # Load model from checkpoint
     checkpoint_path = r"D:\Ailanthus_NAIP_Classification\NAIP_Host_Model\outputs\ailanthus_image_climate_uniform_july3025\checkpoints\checkpoint_epoch_29.tar"
     model, _ = load_model_from_checkpoint(checkpoint_path, env_vars, hidden_dim=256, dropout=0.25)
-    model.eval()
+
+    def enable_mc_dropout(model):
+        """Enable dropout layers during inference"""
+        for m in model.modules():
+            if isinstance(m, torch.nn.Dropout):
+                m.train()
+
+    model.eval()  # Keeps BatchNorm layers in eval mode
+    enable_mc_dropout(model)  # Activates dropout for uncertainty estimation
+
     device = get_default_device()
     print(f"Loaded model type: {model.__class__.__name__}")
     print(f"Loaded model from {checkpoint_path} on device {device}")
@@ -288,28 +326,28 @@ def main():
     naip_files = [os.path.join(naip_folder, f) for f in os.listdir(naip_folder) if f.endswith(".tif")]
     print(f"Found {len(naip_files)} NAIP tiles to process.")
 
-    #    ##### Restart infernece with only missing NAIP .tif files #####
-    # # Get all original NAIP tile base names (e.g., m_3307701_ne_18_060_20220923_20221207)
-    # naip_tiles = [os.path.splitext(f)[0] for f in os.listdir(naip_folder) if f.endswith(".tif")]
-    # # Get all completed prediction tile base names (remove _predictions suffix)
-    # predicted_tiles = [f.replace("_predictions", "").replace(".tif", "") for f in os.listdir(output_dir) if f.endswith("_predictions.tif")]
-    # print(len(predicted_tiles), "tiles already predicted")
-    # # Find which tiles are missing
-    # missing_tiles = sorted(list(set(naip_tiles) - set(predicted_tiles)))
-    # print(f"Missing {len(missing_tiles)} tiles")
-    # # Get full paths for the missing tiles
-    # missing_tile_paths = [os.path.join(naip_folder, f + ".tif") for f in missing_tiles]
-    # # print(missing_tile_paths)
-    # print(f"Running inference on {len(missing_tile_paths)} missing tiles")
+       ##### Restart infernece with only missing NAIP .tif files #####
+    # Get all original NAIP tile base names (e.g., m_3307701_ne_18_060_20220923_20221207)
+    naip_tiles = [os.path.splitext(f)[0] for f in os.listdir(naip_folder) if f.endswith(".tif")]
+    # Get all completed prediction tile base names (remove _predictions suffix)
+    predicted_tiles = [f.replace("_predictions", "").replace(".tif", "") for f in os.listdir(output_dir) if f.endswith("_predictions.tif")]
+    print(len(predicted_tiles), "tiles already predicted")
+    # Find which tiles are missing
+    missing_tiles = sorted(list(set(naip_tiles) - set(predicted_tiles)))
+    print(f"Missing {len(missing_tiles)} tiles")
+    # Get full paths for the missing tiles
+    missing_tile_paths = [os.path.join(naip_folder, f + ".tif") for f in missing_tiles]
+    # print(missing_tile_paths)
+    print(f"Running inference on {len(missing_tile_paths)} missing tiles")
 
     # Loop over each NAIP tile and run inference
-    for tile_fp in tqdm(naip_files, desc="Processing Tiles"):
+    for tile_fp in tqdm(missing_tile_paths, desc="Processing Tiles"):
         try:
             run_inference_on_tile(
                 tile_fp, output_dir, model, device, image_transform,
                 wc_normalization_stats, 
                 worldclim_folder, ghm_raster_fp, 
-                chip_size=256, stride=256
+                chip_size=256, stride=64
             )
         except Exception as e:
             print(f"[ERROR] Failed on {tile_fp}: {e}")

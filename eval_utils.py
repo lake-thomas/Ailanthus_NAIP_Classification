@@ -5,6 +5,8 @@ import os
 import torch
 import matplotlib.pyplot as plt
 import pandas as pd
+import geopandas as gpd
+import contextily as ctx # For basemaps in plotting errors
 from model import HostImageryClimateModel, HostImageryOnlyModel, HostClimateOnlyModel
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, classification_report
 from sklearn.metrics import roc_curve, roc_auc_score
@@ -22,7 +24,7 @@ def test_model(model, test_loader, device, out_dir="model_results"):
     y_true = []
 
     for batch in test_loader:
-        images, envs, labels = batch
+        images, envs, labels, _, _ = batch # Testing batch contains images, environmental features, labels, and lat/ lon
         images = images.to(device)
         envs = envs.to(device)
         labels = labels.to(device)
@@ -67,6 +69,7 @@ def test_model(model, test_loader, device, out_dir="model_results"):
 def map_model_errors(model, test_loader, device, out_dir="model_results"):
     """
     Map model errors on the test dataset
+    Loads lat/lon from the dataset and plots errors by type
     """
 
     model.to(device)
@@ -78,7 +81,7 @@ def map_model_errors(model, test_loader, device, out_dir="model_results"):
     lon_list = []
 
     for batch in test_loader:
-        images, envs, labels = batch
+        images, envs, labels, lats, lons = batch
         images = images.to(device)
         envs = envs.to(device)
         labels = labels.to(device)
@@ -91,17 +94,16 @@ def map_model_errors(model, test_loader, device, out_dir="model_results"):
         elif isinstance(model, HostClimateOnlyModel):
             outputs = model(envs)
         else:
-            raise NotImplementedError("Unknown model type for map_model_errors")
+            raise NotImplementedError("Unknown model type")
 
+        # Preditions 
         preds = (outputs > 0.5).float()
         y_pred.extend(preds.cpu().numpy())
         y_true.extend(labels.cpu().numpy())
         
         # Collect lat/lon from the batch
-        lat = envs[:, 0].cpu().numpy()  # Lat is the 5th column in the environment features
-        lon = envs[:, 1].cpu().numpy()  # Lon is the 6th column in the environment features
-        lat_list.extend(lat)
-        lon_list.extend(lon)
+        lat_list.extend(lats.numpy())
+        lon_list.extend(lons.numpy())
 
     # Build Dataframe
     df = pd.DataFrame({
@@ -118,20 +120,75 @@ def map_model_errors(model, test_loader, device, out_dir="model_results"):
     df.loc[(df.true_label == 1) & (df.predicted_label == 0), "error_type"] = "FN"
 
     # Save DataFrame to CSV
-    df.to_csv(os.path.join(out_dir, "spatial_predictions.csv"), index=False)
+    df.to_csv(os.path.join(out_dir, "ailanthus_spatial_prediction_errors.csv"), index=False)
 
-    # Plot Errors on Map
-    color_map = {"TP": "green", "TN": "blue", "FP": "red", "FN": "orange"}
-    plt.figure(figsize=(8, 6))
-    for err_type, color in color_map.items():
-        subset = df[df["error_type"] == err_type]
-        plt.scatter(subset["lon"], subset["lat"], c=color, label=err_type, alpha=0.6, s=10)
+    # Convert to GeoDataFrame
+    gdf = gpd.GeoDataFrame(
+        df,
+        geometry=gpd.points_from_xy(df.lon, df.lat),
+        crs="EPSG:4326"  # WGS84
+    )
+    gdf = gdf.to_crs(epsg=3857)  # Web Mercator for basemaps
 
-    plt.xlabel("Longitude")
-    plt.ylabel("Latitude")
-    plt.title("Spatial Distribution of Prediction Errors")
-    plt.legend()
-    plt.savefig(os.path.join(out_dir, "spatial_errors.png"), dpi=300)
+    # Color and marker
+    color_map = {"TP": "green", "TN": "orange", "FP": "blue", "FN": "purple"}
+    marker_map = {0: "o", 1: "^"}
+
+    # Dynamically calculate bounds from the full dataset, with padding:
+    buffer = 100000  # meters
+    xmin, ymin, xmax, ymax = gdf.total_bounds
+    extent = [xmin - buffer, ymin - buffer, xmax + buffer, ymax + buffer]
+
+    # --- Plot 1: Presences only ---
+    gdf_pres = gdf[gdf["true_label"] == 1]
+    fig1, ax1 = plt.subplots(figsize=(10, 10))
+    ax1.set_xlim(extent[0], extent[2])
+    ax1.set_ylim(extent[1], extent[3])
+
+    for err_type in ["TP", "FN"]:
+        subset = gdf_pres[gdf_pres["error_type"] == err_type]
+        if not subset.empty:
+            subset.plot(
+                ax=ax1,
+                color=color_map[err_type],
+                marker=marker_map[1],  # triangle
+                markersize=20,
+                label=err_type,
+                alpha=0.7
+            )
+
+    ctx.add_basemap(ax1, crs=gdf_pres.crs)
+    ax1.set_title("Ailanthus Prediction Errors: Presences", fontsize=14)
+    ax1.axis("off")
+    ax1.legend(loc="lower left", fontsize=9, title="Error Type")
+    plt.tight_layout()
+    plt.savefig(os.path.join(out_dir, "ailanthus_spatial_errors_testing_presences.png"), dpi=300)
+    plt.close()
+
+    # --- Plot 2: Absences only ---
+    gdf_abs = gdf[gdf["true_label"] == 0]
+    fig2, ax2 = plt.subplots(figsize=(10, 10))
+    ax2.set_xlim(extent[0], extent[2])
+    ax2.set_ylim(extent[1], extent[3])
+
+    for err_type in ["TN", "FP"]:
+        subset = gdf_abs[gdf_abs["error_type"] == err_type]
+        if not subset.empty:
+            subset.plot(
+                ax=ax2,
+                color=color_map[err_type],
+                marker=marker_map[0],  # circle
+                markersize=20,
+                label=err_type,
+                alpha=0.7
+            )
+
+    ctx.add_basemap(ax2, crs=gdf_abs.crs)
+    ax2.set_title("Ailanthus Prediction Errors: Pseudoabsences", fontsize=14)
+    ax2.axis("off")
+    ax2.legend(loc="lower left", fontsize=9, title="Error Type")
+    plt.tight_layout()
+    plt.savefig(os.path.join(out_dir, "ailanthus_spatial_errors_testing_absences.png"), dpi=300)
     plt.close()
 
 

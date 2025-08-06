@@ -74,7 +74,7 @@ def main():
     env_vars = config['env_features'] # List of environmental variables (WorldClim, GHM, DEM, etc.)
     train_ds = HostNAIPDataset(config['csv_path'], config['image_dir'], 'train', env_vars, transform=image_transform)
     val_ds = HostNAIPDataset(config['csv_path'], config['image_dir'], 'val', env_vars)
-    test_ds = HostNAIPDataset(config['csv_path'], config['image_dir'], 'test', env_vars)
+    test_ds = HostNAIPDataset(config['csv_path'], config['image_dir'], 'test', env_vars, return_latlon=True) # Return lat/lon for mapping errors
 
     # Dataloaders
     train_dl = DataLoader(train_ds, batch_size=config['batch_size'], shuffle=True, num_workers=4)
@@ -134,7 +134,7 @@ def main():
     test_model(model, test_dl, device, experiment_dir)
 
     # Map Model Errors (Plot Testing Points by Error Type)
-    # map_model_errors(model, test_dl, device, experiment_dir)
+    map_model_errors(model, test_dl, device, experiment_dir)
 
 if __name__ == "__main__":
     main()

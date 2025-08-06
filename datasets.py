@@ -11,7 +11,7 @@ from torch.utils.data import Dataset
 # Create Pytorch Dataset for NAIP imagery and Environmental Variables
 
 class HostNAIPDataset(Dataset):
-    def __init__(self, csv_path, image_base_dir, split='train', environment_features=None, transform=None):
+    def __init__(self, csv_path, image_base_dir, split='train', environment_features=None, transform=None, return_latlon=False):
         """
         csv_path: Path to the CSV file with meatadata like NAIP image paths and environmental features
         image_base_dir: Base directory where NAIP images are stored, corresponds to the chip_path column in the CSV
@@ -27,6 +27,8 @@ class HostNAIPDataset(Dataset):
         self.environment_features = [col for col in self.df.columns if col.startswith('wc2.1_30s') or col in ['ghm']]
 
         self.transform = transform
+
+        self.return_latlon = return_latlon
 
     def __len__(self):
         return len(self.df)
@@ -54,8 +56,15 @@ class HostNAIPDataset(Dataset):
         env_features = row[self.environment_features].values.astype(np.float32)
         env_features = torch.tensor(env_features, dtype=torch.float32)
 
+        # Load label
         label = torch.tensor(row['presence'], dtype=torch.float32)  # 'presence' is the label column (0/1)
 
-        return img, env_features, label
+        # Return lat/ lon features if needed, for testing dataset
+        if self.return_latlon:
+            lat = torch.tensor(row['lat'], dtype=torch.float32)
+            lon = torch.tensor(row['lon'], dtype=torch.float32)
+            return img, env_features, label, lat, lon
+        else:
+            return img, env_features, label
 
 # EOF
