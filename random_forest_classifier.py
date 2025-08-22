@@ -14,6 +14,12 @@ from sklearn.metrics import (
 )
 import matplotlib.pyplot as plt
 
+import warnings
+warnings.filterwarnings(
+    "ignore",
+    message="X has feature names, but RandomForestClassifier was fitted without feature names"
+)
+
 # Set Conda Env Path with GDAL and PROJ libraries
 conda_env = r"C:\Users\talake2\AppData\Local\anaconda3\envs\naip_ailanthus_env"
 
@@ -30,13 +36,14 @@ from rasterio.mask import mask
 
 # CSV file containing training, validation, and test data in spatial cross validation splits
 cv_paths = [
-   r"D:\Ailanthus_NAIP_Classification\Datasets\Ailanthus_CrossVal_PA_NAIP_256_July25\CV_1\Ailanthus_Train_Val_Test_CV_1.csv",
-   r"D:\Ailanthus_NAIP_Classification\Datasets\Ailanthus_CrossVal_PA_NAIP_256_July25\CV_2\Ailanthus_Train_Val_Test_CV_2.csv",
-   r"D:\Ailanthus_NAIP_Classification\Datasets\Ailanthus_CrossVal_PA_NAIP_256_July25\CV_3\Ailanthus_Train_Val_Test_CV_3.csv"
+   r"D:\Ailanthus_NAIP_Classification\Datasets\Ailanthus_Uniform_PA_1300m_thin_NAIP_256_Aug2125\Ailanthus_Train_Val_Test_Uniform_Random_NC.csv", # Uniform Random Split
+   r"D:\Ailanthus_NAIP_Classification\Datasets\Ailanthus_CrossVal_PA_1300m_thin_NAIP_256_Aug2125\CV_1\Ailanthus_Train_Val_Test_CV_1.csv", # CV 1
+   r"D:\Ailanthus_NAIP_Classification\Datasets\Ailanthus_CrossVal_PA_1300m_thin_NAIP_256_Aug2125\CV_2\Ailanthus_Train_Val_Test_CV_2.csv", # CV 2
+   r"D:\Ailanthus_NAIP_Classification\Datasets\Ailanthus_CrossVal_PA_1300m_thin_NAIP_256_Aug2125\CV_3\Ailanthus_Train_Val_Test_CV_3.csv" # CV 3
 ]
+split_names = ["uniform", "cv1", "cv2", "cv3"]
 
-
-output_path = r"D:\Ailanthus_NAIP_Classification\rf_model\rf_inference.tif"
+output_path = r"D:\Ailanthus_NAIP_Classification\rf_model\rf_inference_map_aug2125.tif"
 worldclim_dir = r'D:\Ailanthus_NAIP_Classification\Env_Data\Worldclim'
 ghm_path = r'D:\Ailanthus_NAIP_Classification\Env_Data\Global_Human_modification\ghm_wgs84.tif'
 shapefile_path = r'D:\Ailanthus_NAIP_Classification\Env_Data\tl_2024_us_state\tl_2024_us_state_wgs84.shp'
@@ -61,6 +68,7 @@ def drop_nans(X, y):
     mask = ~np.isnan(X).any(axis=1)
     return X[mask], y[mask]
 
+# ------------- INFERENCE: Run model on stacked rasters ----------------
 def run_model_inference(model, output_path, test_df, shapefile_path):
     print("Loading and stacking rasters for prediction...")
     states = gpd.read_file(shapefile_path)
@@ -125,8 +133,9 @@ def run_model_inference(model, output_path, test_df, shapefile_path):
 # ------------- MAIN WORKFLOW ----------------
 results = []
 
-for i, csv_path in enumerate(cv_paths):
-    print(f"\n=== Cross-validation Round {i+1} ===")
+for split_name, csv_path in zip(split_names, cv_paths):
+    print(f"\n=== Processing Split: {split_name} ===")
+
     df = pd.read_csv(csv_path)
     
     train_df, val_df, test_df = (
@@ -149,18 +158,19 @@ for i, csv_path in enumerate(cv_paths):
     X_train, y_train = drop_nans(X_train.values, y_train)
     X_val, y_val = drop_nans(X_val.values, y_val)
     X_test, y_test = drop_nans(X_test.values, y_test)
-
-
+    print(f"Train shape: {X_train.shape}, Val shape: {X_val.shape}, Test shape: {X_test.shape}")
 
     # ------------- TRAIN RANDOM FOREST ----------------
     param_grid = {
         'n_estimators': [500],
         'max_features': ['sqrt'],
-        'max_depth': [5, 10, None],
-        'min_samples_split': [10],
-        'min_samples_leaf': [10],
+        'max_depth': [5, ],
+        'min_samples_split': [5],
+        'min_samples_leaf': [5],
         'bootstrap': [True],
     }
+
+    print("Grid search for hyperparameter tuning...")
     grid = GridSearchCV(
         RandomForestClassifier(random_state=42),
         param_grid, cv=5, scoring='f1', n_jobs=4, verbose=1
@@ -171,52 +181,44 @@ for i, csv_path in enumerate(cv_paths):
     print(f"Best parameters: {grid.best_params_}")
 
     best_model = grid.best_estimator_
-    model_save_path = fr"D:\Ailanthus_NAIP_Classification\rf_model\rf_model_cv{i}.pkl"
+    model_save_path = fr"D:\Ailanthus_NAIP_Classification\rf_model\rf_model_{split_name}_aug2125.pkl"
     joblib.dump(best_model, model_save_path)
 
-    # Evaluate
-    for split_name, X, y in [('Val', X_val, y_val), ('Test', X_test, y_test)]:
-        y_pred = best_model.predict(X)
-        y_proba = best_model.predict_proba(X)[:, 1]
-        
-        metrics = {
-            'cv_round': i,
-            'split': split_name,
-            'accuracy': accuracy_score(y, y_pred),
-            'precision': precision_score(y, y_pred),
-            'recall': recall_score(y, y_pred),
-            'f1': f1_score(y, y_pred),
-            'roc_auc': roc_auc_score(y, y_proba)
-        }
-        results.append(metrics)
-        print(f"\n{split_name} Results (CV{i}):")
-        print(pd.Series(metrics))
+    # ------------- PARTIAL DEPENDENCE PLOTS ----------------
+    from sklearn.inspection import PartialDependenceDisplay
 
+    # Make a directory to save PDPs if not exists
+    pdp_dir = r"D:\Ailanthus_NAIP_Classification\rf_model\pdp_plots"
+    os.makedirs(pdp_dir, exist_ok=True)
 
-    # ------------- FEATURE IMPORTANCE ----------------
-    importances = best_model.feature_importances_
-    sorted_idx = np.argsort(importances)[::-1]
-    plt.figure(figsize=(12, 6))
-    plt.title("Feature Importances")
-    plt.bar(range(len(importances)), importances[sorted_idx])
-    plt.xticks(range(len(importances)), [raster_names[i] for i in sorted_idx], rotation=90)
-    plt.tight_layout()
-    plt.show()
+    # Create partial dependence plots for all predictors
+    print("Generating partial dependence plots...")
 
-    # # ------------- RESPONSE CURVES ----------------
-    # for i in range(min(5, len(raster_names))):
-    #     feature = raster_names[sorted_idx[i]]
-    #     plt.figure(figsize=(8, 4))
-    #     plt.title(f"Response for {feature}")
-    #     plt.scatter(X_train[:, sorted_idx[i]], y_train, alpha=0.3, label='Train')
-    #     plt.scatter(X_val[:, sorted_idx[i]], y_val, alpha=0.3, label='Val', color='orange')
-    #     plt.xlabel(feature)
-    #     plt.ylabel('Presence (1) / Absence (0)')
-    #     plt.legend()
-    #     plt.show()
+    # Select top N features if you want fewer plots
+    features_to_plot = raster_names  # or e.g., raster_names[:10]
+
+    # Scikit-learn requires the *training data* used to fit
+    # (here, X_train with column names)
+    X_train_df = pd.DataFrame(X_train, columns=raster_names)
+
+    for feature in features_to_plot:
+        print(f" - {feature}")
+        fig, ax = plt.subplots(figsize=(6, 4))
+        disp = PartialDependenceDisplay.from_estimator(
+            best_model,
+            X_train_df,
+            [feature],
+            kind="average",       # "average" (default) ≈ Maxent response curves
+            grid_resolution=50,   # more points = smoother curves
+            ax=ax
+        )
+        ax.set_title(f"Partial Dependence: {feature}")
+        fig.tight_layout()
+        fig.savefig(os.path.join(pdp_dir, f"pdp_{feature}_{split_name}.png"), dpi=300)
+        plt.close(fig)
 
     # ------------- INFERENCE: PREDICT RASTER ---------------
-    output_raster_path = fr"D:\Ailanthus_NAIP_Classification\rf_model\rf_inference_cv{i}.tif"
+    output_raster_path = fr"D:\Ailanthus_NAIP_Classification\rf_model\rf_inference_{split_name}_aug2125.tif"
     prob_raster = run_model_inference(best_model, output_raster_path, test_df, shapefile_path)
 
     # Sample raster at test points
@@ -235,7 +237,8 @@ for i, csv_path in enumerate(cv_paths):
     plt.title("Histogram of Predicted Probabilities at Test Points")
     plt.xlabel("Predicted Probability")
     plt.ylabel("Frequency")
-    plt.show()
+    plt.savefig(fr"D:\Ailanthus_NAIP_Classification\rf_model\rf_pred_prob_histogram_{split_name}_aug2125.png", dpi=300)
+    plt.close()
 
     # Evaluate performance at test locations
     threshold = 0.5
@@ -259,7 +262,7 @@ for i, csv_path in enumerate(cv_paths):
 
     report_df = pd.DataFrame(report_dict).T
     report_df = report_df[['precision', 'recall', 'f1-score', 'support']]
-    report_df[['precision', 'recall', 'f1-score']] = report_df[['precision', 'recall', 'f1-score']].round(9)
+    report_df[['precision', 'recall', 'f1-score']] = report_df[['precision', 'recall', 'f1-score']].round(4)
     report_df['support'] = report_df['support'].fillna(0).astype(int)
 
     # Set support for accuracy explicitly
@@ -268,7 +271,7 @@ for i, csv_path in enumerate(cv_paths):
     print("\nFormatted Classification Report:")
     print(report_df.to_string())
 
-    report_csv_path = fr"D:\Ailanthus_NAIP_Classification\rf_model\rf_classification_report_cv{i}.csv"
+    report_csv_path = fr"D:\Ailanthus_NAIP_Classification\rf_model\rf_classification_report_{split_name}_aug2125.csv"
     report_df.to_csv(report_csv_path, index=True)
 
 
