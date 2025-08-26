@@ -4,7 +4,7 @@ This repository contains code, configuration files, and workflows for classifyin
 
 Models are trained and evaluated in **Python/ PyTorch** with support for reproducible runs, inference, and experiment tracking through WandB.
 
-![Model Predictions: Comparison between Random Forest, Climate-Only (NN), Image-Only (CNN), and Image + Climate (CNN)](https://github.com/lake-thomas/Ailanthus_NAIP_Classification/blob/main/compare_predictions.png?raw=true)
+![Model Predictions: Comparison between Random Forest, Climate-Only (NN), Image-Only (CNN), and Image + Climate (CNN)](https://github.com/lake-thomas/Ailanthus_NAIP_Classification/tree/main/compare_predictions.png?raw=true)
 
 ---
 
@@ -69,6 +69,7 @@ python inference/tiled_inference_serial.py
 
 If you use this repo, =cite:
 Lake, T. (2025). Classifying Tree-of-Heaven with NAIP imagery and environmental predictors. In prep.
+
 
 
 
