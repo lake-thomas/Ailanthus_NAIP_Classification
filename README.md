@@ -67,8 +67,9 @@ python models/main.py --config configs_sweeps/model_config.json
 ### Inference
 python inference/tiled_inference_serial.py 
 
-If you use this repo, =cite:
+If you use this repo, cite:
 Lake, T. (2025). Classifying Tree-of-Heaven with NAIP imagery and environmental predictors. In prep.
+
 
 
 
