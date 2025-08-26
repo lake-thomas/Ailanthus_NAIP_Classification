@@ -8,40 +8,41 @@ Models are trained and evaluated in **Python/ PyTorch** with support for reprodu
 
 ## 📂 Repository Structure
 
-├── README.md # Documentation (this file)
+├── README.md                         # Documentation (this file)
 │
-├── configs_sweeps/ # Config files for model training and hyperparameter sweeps
-│ ├── model_config.json <- Config for training CNNs on NAIP + Env predictors. Use with main.py.
-│ ├── launch_sweep_wandb.py <- Config and training CNNs with hyperparameter sweep through WandB.
-│ ├── sweep.yaml <- Sweep config example.
-│ └── sweep_cnn_hyperparameters.yaml <- Sweep config example.
+├── configs_sweeps/                   # Config files for model training and hyperparameter sweeps
+│   ├── model_config.json             # Config for training CNNs on NAIP + environmental predictors (used by main.py)
+│   ├── launch_sweep_wandb.py         # Launch W&B hyperparameter sweep for CNN training
+│   ├── sweep.yaml                    # Sweep config example
+│   └── sweep_cnn_hyperparameters.yaml# Sweep config example
 │
-├── data_prep/ # Scripts for dataset creation and preprocessing
-│ ├── species_occurrences_inat.py <- Query species points from iNaturalist.
-│ ├── species_occurrences_gbif.py <- Query species points from GBIF.
-│ ├── species_occurrences_filtering.py <- Distance-based point filtering.
-│ ├── naip_imagery_downloader.py <- Download NAIP imagery in North Carolina from S3 Bucket.
-│ ├── naip_imagery_manifest_metadata.py <- Query NAIP imagery in North Carolina.
-│ ├── naip_imagery_download_status.py <- Check download status: are we there yet?
-│ ├── species_train_val_test_random_sampling.py <- Randomly divide point + image + env data for model training.
-│ ├── species_train_val_test_stratified_sampling.py <- Stratify point + image + env data for model training.
-│ └── host_image_climate_dataset_sampling_ttv_unif_spatialcv.py <- Create random and stratified data for model training.
+├── data_prep/                        # Scripts for dataset creation and preprocessing
+│   ├── species_occurrences_inat.py   # Query species points from iNaturalist
+│   ├── species_occurrences_gbif.py   # Query species points from GBIF
+│   ├── species_occurrences_filtering.py # Distance-based point filtering
+│   ├── naip_imagery_downloader.py    # Download NAIP imagery in North Carolina from S3 bucket
+│   ├── naip_imagery_manifest_metadata.py # Query NAIP imagery in North Carolina
+│   ├── naip_imagery_download_status.py # Check download status
+│   ├── species_train_val_test_random_sampling.py     # Randomly split points + image + env data
+│   ├── species_train_val_test_stratified_sampling.py # Stratified split for model training
+│   └── host_image_climate_dataset_sampling_ttv_unif_spatialcv.py # Create random/stratified data + spatial CV
 │
-├── inference/ # Inference and prediction workflows
-│ ├── tiled_inference_serial.py <- Model inference on image + env data, predicted probablity output.
-│ ├── tiled_inference_parallel.py <- Parallel model infernece on image + env data, predicted probablity output.
-│ └── tiled_inference_serial_uncertainty.py <- Model inference with Dropout, predicted prob and uncertainty output.
+├── inference/                        # Inference and prediction workflows
+│   ├── tiled_inference_serial.py     # Serial inference on image + env data; outputs predicted probabilities
+│   ├── tiled_inference_parallel.py   # Parallel inference on image + env data; outputs predicted probabilities
+│   └── tiled_inference_serial_uncertainty.py # Inference with dropout; outputs probability and uncertainty
 │
-├── models/ # CNN model training and evaluation for image + env data
-│ ├── main.py <- Train and evaluate CNN in Pytorch for classification.
-│ ├── model.py <- HostImageClimate, HostImageOnly, HostClimateOnly Pytorch models.
-│ ├── datasets.py # <- Build Pytorch Dataset classes to train CNNs.
-│ ├── train_utils.py <- Fit, load, and save models.
-│ ├── eval_utils.py <- Test model on withheld data and calculate evaluation metrics.
-│ ├── transforms.py <- Image transformations (rotations, flips, ..)
-│ ├── test_transforms.py <- Image transformations (visualized)
-│ ├── logging_utils.py <- Logging boilerplate
-│ └── random_forst_classifier.py <- Random Forest model baseline to compare with CNNs.
+├── models/                           # CNN model training and evaluation for image + env data
+│   ├── main.py                       # Train and evaluate CNNs in PyTorch for classification
+│   ├── model.py                      # HostImageClimate, HostImageOnly, HostClimateOnly PyTorch models
+│   ├── datasets.py                   # PyTorch Dataset classes
+│   ├── train_utils.py                # Fit, load, and save models
+│   ├── eval_utils.py                 # Evaluate on withheld data and compute metrics
+│   ├── transforms.py                 # Image transformations (rotations, flips, etc.)
+│   ├── test_transforms.py            # Visualize image transformations
+│   ├── logging_utils.py              # Logging boilerplate
+│   └── random_forst_classifier.py    # Random Forest baseline to compare with CNNs
+
 
 ## 🌍 Usage
 
@@ -67,3 +68,4 @@ python inference/tiled_inference_serial.py
 
 If you use this repo, =cite:
 Lake, T. (2025). Classifying Tree-of-Heaven with NAIP imagery and environmental predictors. In prep.
+
