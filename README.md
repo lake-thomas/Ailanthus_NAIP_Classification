@@ -1,4 +1,4 @@
-﻿# Ailanthus NAIP Classification
+﻿# Species Distribution Models with Image + Climate Data
 
 This repository contains code, configuration files, and workflows for classifying **Tree-of-Heaven (Ailanthus altissima)** presence using **NAIP aerial imagery** combined with environmental predictors (climate, DEM, human modification).  
 
@@ -69,6 +69,7 @@ python inference/tiled_inference_serial.py
 
 If you use this repo, =cite:
 Lake, T. (2025). Classifying Tree-of-Heaven with NAIP imagery and environmental predictors. In prep.
+
 
 
 
