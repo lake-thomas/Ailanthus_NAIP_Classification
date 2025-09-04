@@ -312,11 +312,11 @@ def run_inference_on_tile(
 
 def main():
     # Paths
-    tileindex_fp = r"D:\Ailanthus_NAIP_Classification\tileindex_NC_NAIP_2022\tileindex_NC_NAIP_2022.shp"
-    naip_folder = r"D:\Ailanthus_NAIP_Classification\NAIP_NC_4Band_1m"
-    worldclim_folder = r"D:\Ailanthus_NAIP_Classification\Env_Data\WorldClim"
-    ghm_raster_fp = r"D:\Ailanthus_NAIP_Classification\Env_Data\Global_Human_Modification\gHM_WGS84.tif"
-    output_dir = r"C:\Users\talake2\Desktop\ailanthus_nc_inference_image_climate_sept0225"
+    tileindex_fp = r"/share/rkmeente/talake2/tree_naip_climate/tileindex_NC_NAIP_2022/tileindex_NC_NAIP_2022.shp"
+    naip_folder = r"/rs1/researchers/c/cmjone25/Data/Raster/USA/NAIP_NC_4Band_1m"
+    worldclim_folder = r"/share/rkmeente/talake2/tree_naip_climate/Env_Data/WorldClim"
+    ghm_raster_fp = r"/share/rkmeente/talake2/tree_naip_climate/Env_Data/Global_Human_Modification/gHM_WGS84.tif"
+    output_dir = r"/share/rkmeente/talake2/tree_naip_climate/model_inference_outputs_test"
 
     # Output directory
     os.makedirs(output_dir, exist_ok=True)
@@ -335,7 +335,7 @@ def main():
     print("Length of env_vars:", len(env_vars))
 
     # Load model from checkpoint
-    checkpoint_path = r"D:\Ailanthus_NAIP_Classification\NAIP_Host_Model\outputs\ailanthus_image_climate_pa_1300m_10ep_blockcv_uniform_sept0225\checkpoints\checkpoint_epoch_8.tar"
+    checkpoint_path = r"/share/rkmeente/talake2/tree_naip_climate/checkpoints/ailanthus_image_climate_pa_1300m_10ep_blockcv_uniform_sept0225/checkpoint_epoch_8.tar"
     model, _ = load_model_from_checkpoint(checkpoint_path, env_vars, hidden_dim=256, dropout=0.25)
 
     model.eval()  # Keeps BatchNorm layers in eval mode
