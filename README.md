@@ -35,7 +35,7 @@ README.md — Documentation (this file)
   * tiled_inference_serial_uncertainty.py — Inference with dropout; outputs probability and uncertainty
 
 * models/ — CNN model training and evaluation for image + env data
-  * main.py — Train and evaluate CNNs in PyTorch for classification
+  * **main.py — Train and evaluate CNNs in PyTorch for species classification**
   * model.py — HostImageClimate, HostImageOnly, HostClimateOnly PyTorch models
   * datasets.py — PyTorch Dataset classes
   * train_utils.py — Fit, load, and save models
@@ -69,6 +69,7 @@ python inference/tiled_inference_serial.py
 
 If you use this repo, cite:
 Lake, T. (2025). Classifying Tree-of-Heaven with NAIP imagery and environmental predictors. In prep.
+
 
 
 
