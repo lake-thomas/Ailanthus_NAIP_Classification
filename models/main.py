@@ -4,10 +4,16 @@
 # Imports
 import os
 
-conda_env = r"C:\Users\talake2\AppData\Local\anaconda3\envs\naip_ailanthus_env"
-os.environ["GDAL_DATA"] = os.path.join(conda_env, "Library", "share", "gdal")
-os.environ["PROJ_LIB"] = os.path.join(conda_env, "Library", "share", "proj")
-os.environ["PATH"] += os.pathsep + os.path.join(conda_env, "Library", "bin")
+# NOTE:
+# The original project used a Windows-specific conda installation where GDAL/PROJ
+# variables had to be set explicitly. We preserve that behavior behind an optional
+# environment variable so new users on Linux/macOS or preconfigured systems are
+# not forced into a hardcoded local path.
+conda_env = os.environ.get("AILANTHUS_CONDA_ENV_PATH")
+if conda_env:
+    os.environ["GDAL_DATA"] = os.path.join(conda_env, "Library", "share", "gdal")
+    os.environ["PROJ_LIB"] = os.path.join(conda_env, "Library", "share", "proj")
+    os.environ["PATH"] += os.pathsep + os.path.join(conda_env, "Library", "bin")
 
 import time  # noqa: E402
 import logging # noqa: E402
@@ -26,6 +32,7 @@ from logging_utils import setup_logging # noqa: E402
 import wandb  # noqa: E402
 
 def main():
+    """Train and evaluate a model run defined by a JSON configuration file."""
     # Argument Parser
     parser = argparse.ArgumentParser(description="Train Host NAIP Imagery and Environmental Variables Model for Ailanthus Classification")
     parser.add_argument('--config', type=str, required=True, help='Path to the configuration JSON file')

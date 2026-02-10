@@ -4,10 +4,14 @@
 # Imports
 import os
 
-conda_env = r"C:\Users\talake2\AppData\Local\anaconda3\envs\naip_ailanthus_env"
-os.environ["GDAL_DATA"] = os.path.join(conda_env, "Library", "share", "gdal")
-os.environ["PROJ_LIB"] = os.path.join(conda_env, "Library", "share", "proj")
-os.environ["PATH"] += os.pathsep + os.path.join(conda_env, "Library", "bin")
+# Legacy compatibility note:
+# Historically this script required hardcoded Windows conda paths for GDAL/PROJ.
+# Set AILANTHUS_CONDA_ENV_PATH only if your environment needs these overrides.
+conda_env = os.environ.get("AILANTHUS_CONDA_ENV_PATH")
+if conda_env:
+    os.environ["GDAL_DATA"] = os.path.join(conda_env, "Library", "share", "gdal")
+    os.environ["PROJ_LIB"] = os.path.join(conda_env, "Library", "share", "proj")
+    os.environ["PATH"] += os.pathsep + os.path.join(conda_env, "Library", "bin")
 
 import time  # noqa: E402
 import logging # noqa: E402
@@ -26,6 +30,7 @@ from logging_utils import setup_logging # noqa: E402
 import wandb  # noqa: E402
 
 def main():
+    """Run the legacy NC-only training pipeline from a JSON config."""
     # Argument Parser
     parser = argparse.ArgumentParser(description="Train Host NAIP Imagery and Environmental Variables Model for Ailanthus Classification")
     parser.add_argument('--config', type=str, required=True, help='Path to the configuration JSON file')

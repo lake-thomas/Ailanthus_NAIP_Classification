@@ -1,0 +1,12 @@
+numpy
+pandas
+matplotlib
+scikit-learn
+rasterio
+geopandas
+shapely
+pyproj
+torch
+torchvision
+wandb
+pytest

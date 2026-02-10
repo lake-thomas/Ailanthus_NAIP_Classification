@@ -11,6 +11,8 @@ from torch.utils.data import Dataset
 # Create Pytorch Dataset for NAIP imagery and Environmental Variables
 
 class HostNAIPDataset(Dataset):
+    """Dataset for NAIP chips + environmental predictor vectors."""
+
     def __init__(self, csv_path, image_base_dir, split='train', environment_features=None, transform=None):
         """
         csv_path: Path to the CSV file with metadata including NAIP image paths and environmental features (normalized to [0, 1])
@@ -28,7 +30,9 @@ class HostNAIPDataset(Dataset):
         
         # Optimized and uncorrelated set of features based on prior experiments.
         # Bio 1 (mean annual temp), bio 7 (temp annual range), bio 12 (annual precip), bio 15 (precip seasonality), ghm (human modification).
-        self.environment_features = ["wc2.1_30s_bio_1", "wc2.1_30s_bio_7", "wc2.1_30s_bio_12", "wc2.1_30s_bio_15", "ghm"]
+        default_environment_features = ["wc2.1_30s_bio_1", "wc2.1_30s_bio_7", "wc2.1_30s_bio_12", "wc2.1_30s_bio_15", "ghm"]
+        # Allow config-driven overrides while keeping the default optimized subset.
+        self.environment_features = environment_features or default_environment_features
 
         self.transform = transform
 
