@@ -1,80 +1,105 @@
-﻿# Species Distribution Models with Image + Climate Data
+# Ailanthus NAIP Classification (US + Legacy NC Workflows)
 
-This repository contains code, configuration files, and workflows for classifying **Tree-of-Heaven (Ailanthus altissima)** presence using **NAIP aerial imagery** combined with environmental predictors (climate, DEM, human modification).  
+This repository contains the training and data-preparation workflows used to classify **Tree-of-Heaven (_Ailanthus altissima_)** from **NAIP aerial imagery** and environmental predictors.
 
-Models are trained and evaluated in **Python/ PyTorch** with support for reproducible runs, inference, and experiment tracking through WandB.
+It now includes two parallel code paths:
+
+1. **Current US-scale workflow** (`data_prep/`, `models/`) for nationwide data and model evaluation.
+2. **Legacy North Carolina workflow** (`data_prep_legacy_nc/`, `models_legacy_nc/`) preserved for reproducibility of earlier experiments.
 
 ![Model Predictions: Comparison between Random Forest, Climate-Only (NN), Image-Only (CNN), and Image + Climate (CNN)](compare_predictions.PNG)
 
 ---
 
-## 📂 Repository Structure
+## Repository layout
 
-README.md — Documentation (this file)
+- `configs_sweeps/` - sweep and experiment configuration files.
+- `data_prep/` - current US-scale data collection and sampling scripts.
+- `models/` - current US-scale model training/evaluation code.
+- `data_prep_legacy_nc/` - legacy NC-only data preparation scripts.
+- `models_legacy_nc/` - legacy NC-only model and evaluation scripts.
+- `data_example/` - tiny sample dataset for smoke testing.
 
-* configs_sweeps/ — Config files for model training and hyperparameter sweeps
-  * model_config.json — Config for training CNNs on NAIP + environmental predictors (used by main.py)
-  * launch_sweep_wandb.py — Launch W&B hyperparameter sweep for CNN training
-  * sweep.yaml — Sweep config example
-  * sweep_cnn_hyperparameters.yaml — Sweep config example
+Each major directory contains a local README with script-level guidance.
 
-* data_prep/ — Scripts for dataset creation and preprocessing
-  * species_occurrences_inat.py — Query species points from iNaturalist
-  * species_occurrences_gbif.py — Query species points from GBIF
-  * species_occurrences_filtering.py — Distance-based point filtering
-  * naip_imagery_downloader.py — Download NAIP imagery in North Carolina from S3 bucket
-  * naip_imagery_manifest_metadata.py — Query NAIP imagery in North Carolina
-  * naip_imagery_download_status.py — Check download status
-  * species_train_val_test_random_sampling.py — Randomly split points + image + env data
-  * species_train_val_test_stratified_sampling.py — Stratified split for model training
-  * host_image_climate_dataset_sampling_ttv_unif_spatialcv.py — Create random/stratified data + spatial CV
+---
 
-* inference/ — Inference and prediction workflows
-  * tiled_inference_serial.py — Serial inference on image + env data; outputs predicted probabilities
-  * tiled_inference_parallel.py — Parallel inference on image + env data; outputs predicted probabilities
-  * tiled_inference_serial_uncertainty.py — Inference with dropout; outputs probability and uncertainty
+## Installation
 
-* models/ — CNN model training and evaluation for image + env data
-  * **main.py — Train and evaluate CNNs in PyTorch for species classification**
-  * model.py — HostImageClimate, HostImageOnly, HostClimateOnly PyTorch models
-  * datasets.py — PyTorch Dataset classes
-  * train_utils.py — Fit, load, and save models
-  * eval_utils.py — Evaluate on withheld data and compute metrics
-  * transforms.py — Image transformations (rotations, flips, etc.)
-  * test_transforms.py — Visualize image transformations
-  * logging_utils.py — Logging boilerplate
-  * random_forst_classifier.py — Random Forest baseline to compare with CNNs
+### Option A: Conda (recommended)
 
-## 🌍 Usage
+```bash
+conda env create -f environment.yml
+conda activate ailanthus-naip
+```
 
-### Clone the repo
-- git clone https://github.com/lake-thomas/Ailanthus_NAIP_Classification.git
+### Option B: pip + venv
 
-### Create a conda environment
-- conda create -n <your_environment_name> python=3.10
+```bash
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install --upgrade pip
+pip install -r requirements.txt
+```
 
-### Install dependencies
-- Python (3.10), Pytorch (Torch 2.4, Torchvision compatable with your CUDA version), and standard libraries (Numpy, Pandas, GeoPandas, Shapely ...)
+> **Note:** geospatial packages (`rasterio`, `geopandas`, `shapely`) are easiest to install with conda-forge.
 
-### Download and organize data
-- Run scripts in data_prep to obtain species occurrence points and 4-band NAIP imagery rasters in North Carolina.
-- NAIP imagery for North Carolina also available from: https://www.fisheries.noaa.gov/inport/item/70313
-- Download climate data (Worldclim.org) and Global Human Footprint (https://doi.org/10.1111/gcb.14549) raster data.
+---
 
-### Train and evaluate models
+## Quick start
+
+### 1) Prepare data
+
+Use the US-scale scripts in `data_prep/` to:
+- collect/clean occurrence + background points,
+- query/download NAIP imagery,
+- create train/val/test CSVs for model input.
+
+### 2) Configure an experiment
+
+Edit `configs_sweeps/model_config.json` to set:
+- file paths,
+- model type (`image_climate`, `image_only`, `climate_only`),
+- training hyperparameters.
+
+### 3) Train the US-scale model
+
+```bash
 python models/main.py --config configs_sweeps/model_config.json
+```
 
-### Inference
-python inference/tiled_inference_serial.py 
+### 4) Evaluate / inference
 
-If you use this repo, cite:
-Lake, T. (2025). Classifying Tree-of-Heaven with NAIP imagery and environmental predictors. In prep.
+- Use training artifacts from `output_dir/experiment_name`.
+- Use `models/eval_model_us.py` and related scripts for evaluation and map products.
 
+---
 
+## Legacy NC workflow
 
+The legacy NC pipeline is maintained for historical reproducibility and comparison.
 
+- Data preparation scripts: `data_prep_legacy_nc/`
+- Training/evaluation scripts: `models_legacy_nc/`
 
+Use this workflow if you need to reproduce the earlier NC-only experiments.
 
+---
 
+## Testing
 
+Run the lightweight documentation and structure checks:
 
+```bash
+pytest -q
+```
+
+These tests intentionally avoid requiring large raster/model assets.
+
+---
+
+## Citation
+
+If this code is useful in your work, please cite:
+
+> Lake, T. (2025). Classifying Tree-of-Heaven with NAIP imagery and environmental predictors. In prep.

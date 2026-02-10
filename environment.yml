@@ -1,0 +1,22 @@
+name: ailanthus-naip
+channels:
+  - conda-forge
+  - pytorch
+dependencies:
+  - python=3.10
+  - pip
+  - numpy
+  - pandas
+  - matplotlib
+  - scikit-learn
+  - rasterio
+  - geopandas
+  - shapely
+  - pyproj
+  - gdal
+  - pytorch
+  - torchvision
+  - cpuonly
+  - pytest
+  - pip:
+      - wandb
