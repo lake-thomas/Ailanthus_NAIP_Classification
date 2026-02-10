@@ -1,0 +1,24 @@
+{
+    "experiment": "ailanthus_us_climate_only_nolatlon_noghm_bio171215_blockcv_10ep_cv5_jan2926",
+    "csv_path": "C:/Users/talake2/Desktop/Datasets/Ailanthus_US_BlockCV_PA_NAIP_256_jan29/CV_5/Ailanthus_Train_Val_Test_US_BlockCV_5_Jan26.csv",
+    "image_dir": "C:/Users/talake2/Desktop/Datasets/Ailanthus_US_BlockCV_PA_NAIP_256_jan29/CV_5",
+    "output_dir": "Y:\\Ailanthus_NAIP_SDM\\Outputs_NAIP_Ailanthus_Model_US_2026\\outputs",
+    "model_type": "climate_only",
+    "batch_size": 1024,
+    "epochs": 10,
+    "learning_rate": 1e-06,
+    "lr_patience": 30,
+    "es_patience": 30,
+    "dropout": 0.25,
+    "hflip_prob": 0.5,
+    "vflip_prob": 0.5,
+    "rotation_degrees": 60,
+    "env_features": [
+        "wc2.1_30s_bio_1",
+        "wc2.1_30s_bio_7",
+        "wc2.1_30s_bio_12",
+        "wc2.1_30s_bio_15"
+    ],
+    "checkpoint_dir": "outputs\\checkpoints",
+    "log_path": "outputs\\training.log"
+}

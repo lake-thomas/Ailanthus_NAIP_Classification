@@ -71,10 +71,10 @@ def main():
     )
 
     # Dataset
-    env_vars = config['env_features'] # List of environmental variables (WorldClim, GHM, DEM, etc.) from config
+    env_vars = config['env_features'] # List of environmental variables (WorldClim, GHM, DEM, etc.)
     train_ds = HostNAIPDataset(config['csv_path'], config['image_dir'], 'train', env_vars, transform=image_transform)
     val_ds = HostNAIPDataset(config['csv_path'], config['image_dir'], 'val', env_vars)
-    test_ds = HostNAIPDataset(config['csv_path'], config['image_dir'], 'test', env_vars) # Return lat/lon for mapping errors
+    test_ds = HostNAIPDataset(config['csv_path'], config['image_dir'], 'test', env_vars, return_latlon=True) # Return lat/lon for mapping errors
 
     # Dataloaders
     train_dl = DataLoader(train_ds, batch_size=config['batch_size'], shuffle=True, num_workers=4)
@@ -114,7 +114,7 @@ def main():
         optimizer,
         checkpoint_dir,
         lr_patience=config['lr_patience'],
-        es_patience=config['es_patience']
+        es_patience=config['es_patience'],
     )
 
     elapsed_time = time.time() - start_time

@@ -1,5 +1,5 @@
 # Utilities for training host imagery climate model
-# Thomas Lake, January 2026
+# Thomas Lake, July 2025
 
 import os
 import torch
@@ -33,9 +33,8 @@ def save_checkpoint(model, epoch, optimizer, path="checkpoints"):
 
 def load_model_from_checkpoint(checkpoint_path: str, env_vars: list, hidden_dim=256, dropout=0.25) -> torch.nn.Module:
     """
-    Load model and optimizer state from a checkpoint file for evaluation.
-    checkpoint_path: Path to the checkpoint file
-    env_vars: List of environmental variable names used to determine input size for climate model
+    Load model and optimizer state from a checkpoint file for evaluation
+    To Do: Load different model architectures (HostImageryClimateModel, HostImageryOnlyModel, HostClimateOnlyModel) based on the checkpoint
     """
     device = get_default_device()
     checkpoint = torch.load(checkpoint_path)
@@ -128,5 +127,3 @@ def fit(epochs, lr, model, train_loader, val_loader, optimizer, outpath, lr_pati
                 break
 
     return history
-
-# EOF

@@ -1,4 +1,4 @@
-# Automated evaluation utilities for NAIP imagery and environmental variables model
+# Evaluation utilities for NAIP imagery and environmental variables model
 # Thomas Lake, July 2025
 
 import os
@@ -9,7 +9,7 @@ import geopandas as gpd
 import contextily as ctx # For basemaps in plotting errors
 from model import HostImageryClimateModel, HostImageryOnlyModel, HostClimateOnlyModel
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, classification_report
-from sklearn.metrics import roc_curve, roc_auc_score, matthews_corrcoef
+from sklearn.metrics import roc_curve, roc_auc_score
 
 
 @torch.no_grad()
@@ -20,14 +20,14 @@ def test_model(model, test_loader, device, out_dir="model_results"):
     model.to(device)
     model.eval()
 
-    y_probs = []
     y_pred = []
     y_true = []
 
     for batch in test_loader:
-        images = batch["image"].to(device)
-        envs   = batch["env"].to(device)
-        labels = batch["label"].to(device)
+        images, envs, labels, _, _ = batch # Testing batch contains images, environmental features, labels, and lat/ lon
+        images = images.to(device)
+        envs = envs.to(device)
+        labels = labels.to(device)
 
         # Dynamically handle model input
         if isinstance(model, HostImageryClimateModel):
@@ -39,12 +39,7 @@ def test_model(model, test_loader, device, out_dir="model_results"):
         else:
             raise NotImplementedError("Unknown model type for test_model")
 
-        logits = outputs
-        probs = torch.sigmoid(logits)
-        
-        preds = (probs > 0.5).float() # Outputs are Sigmoid. Use 0.5 threshold for binary classification.
-        
-        y_probs.extend(probs.cpu().numpy())
+        preds = (outputs > 0.5).float() # Use 0.5 threshold for binary classification
         y_pred.extend(preds.cpu().numpy())
         y_true.extend(labels.cpu().numpy())
 
@@ -68,34 +63,13 @@ def test_model(model, test_loader, device, out_dir="model_results"):
     report_df.to_csv(os.path.join(out_dir, "classification_report.csv"))
 
     # ROC Curve (Binary Classification) and AUC
-    auc_score = plot_roc_curve(y_true=y_true, y_probs=y_probs, out_dir=out_dir)
-    print(f"Overall ROC AUC (all thresholds): {auc_score:.4f}")
-
-    # AUC at threshold 0.5 for comparison (same as accuracy-based metrics)
-    auc_at_05 = roc_auc_score(y_true, y_probs)
-    print(f"AUC at threshold=0.5: {auc_at_05:.4f}")
-
-    # Matthews Correlation Coefficient
-    mcc = matthews_corrcoef(y_true, y_pred)
-    print(f"Matthews Correlation Coefficient: {mcc:.4f}")
-
-    # Save MCC to file alongside AUC results
-    metrics_summary = {
-        "roc_auc_all_thresholds": auc_score,
-        "roc_auc_at_0.5": auc_at_05,
-        "mcc_at_0.5": mcc
-    }
-    pd.DataFrame([metrics_summary]).to_csv(
-        os.path.join(out_dir, "model_summary_metrics.csv"),
-        index=False
-    )
-
+    plot_roc_curve(y_true=y_true, y_pred=y_pred, out_dir=out_dir)
 
 @torch.no_grad()
 def map_model_errors(model, test_loader, device, out_dir="model_results"):
     """
     Map model errors on the test dataset
-    Loads lat/lon from the dataset and plots error points by type
+    Loads lat/lon from the dataset and plots errors by type
     """
 
     model.to(device)
@@ -107,13 +81,10 @@ def map_model_errors(model, test_loader, device, out_dir="model_results"):
     lon_list = []
 
     for batch in test_loader:
-        images = batch["image"].to(device)
-        envs   = batch["env"].to(device)
-        labels = batch["label"].to(device)
-
-        lats = batch["lat"].cpu().numpy()
-        lons = batch["lon"].cpu().numpy()
-        # paths = batch["path"]
+        images, envs, labels, lats, lons = batch
+        images = images.to(device)
+        envs = envs.to(device)
+        labels = labels.to(device)
 
         # Dynamically handle model input
         if isinstance(model, HostImageryClimateModel):
@@ -124,18 +95,15 @@ def map_model_errors(model, test_loader, device, out_dir="model_results"):
             outputs = model(envs)
         else:
             raise NotImplementedError("Unknown model type")
-        
-        logits = outputs
-        probs = torch.sigmoid(logits)
-        
-        preds = (probs > 0.5).float() # Outputs are Sigmoid. Use 0.5 threshold for binary classification.
-        
+
+        # Preditions 
+        preds = (outputs > 0.5).float()
         y_pred.extend(preds.cpu().numpy())
         y_true.extend(labels.cpu().numpy())
         
         # Collect lat/lon from the batch
-        lat_list.extend(lats.tolist())
-        lon_list.extend(lons.tolist())
+        lat_list.extend(lats.numpy())
+        lon_list.extend(lons.numpy())
 
     # Build Dataframe
     df = pd.DataFrame({
@@ -224,12 +192,12 @@ def map_model_errors(model, test_loader, device, out_dir="model_results"):
     plt.close()
 
 
-def plot_roc_curve(y_true, y_probs, out_dir="model_results"):
+def plot_roc_curve(y_true, y_pred, out_dir="model_results"):
     """
     Plot ROC curve and save the figure
     """
-    fpr, tpr, thresholds = roc_curve(y_true, y_probs)
-    auc_score = roc_auc_score(y_true, y_probs)
+    fpr, tpr, _ = roc_curve(y_true, y_pred)
+    auc_score = roc_auc_score(y_true, y_pred)
     
     plt.figure(figsize=(6, 6))
     plt.plot(fpr, tpr, label=f'AUC = {auc_score:.4f}')
@@ -244,18 +212,6 @@ def plot_roc_curve(y_true, y_probs, out_dir="model_results"):
     roc_path = os.path.join(out_dir, "roc_curve.png")
     plt.savefig(roc_path, dpi=300)
     plt.close()
-
-    # --- Export data to CSV ---
-    roc_df = pd.DataFrame({
-        "threshold": thresholds,
-        "fpr": fpr,
-        "tpr": tpr
-    })
-
-    roc_df.to_csv(os.path.join(out_dir, "model_roc_data.csv"), index=False)
-
-    return auc_score
-
 
 def plot_accuracies(history, outpath):
     """

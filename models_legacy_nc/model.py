@@ -1,5 +1,5 @@
 # Pytorch model classes for host tree classification using NAIP imagery and environmental variables
-# Thomas Lake, January 2026
+# Thomas Lake, July 2025
 
 import torch
 import torch.nn as nn
@@ -15,10 +15,7 @@ class HostImageClimateModelBase(torch.nn.Module):
         """
         Perform a training step on the model
         """
-        images = batch["image"]
-        envs   = batch["env"]
-        labels = batch["label"]
-
+        images, envs, labels = batch
         device = next(self.parameters()).device
         images = images.to(device)
         envs = envs.to(device)
@@ -40,10 +37,7 @@ class HostImageClimateModelBase(torch.nn.Module):
         """
         Perform a validation step on the model
         """
-        images = batch["image"]
-        envs   = batch["env"]
-        labels = batch["label"]
-
+        images, envs, labels = batch
         device = next(self.parameters()).device
         images = images.to(device)
         envs = envs.to(device)
@@ -59,7 +53,7 @@ class HostImageClimateModelBase(torch.nn.Module):
             raise NotImplementedError("Unknown model type for validation_step")
 
         loss = F.binary_cross_entropy_with_logits(out, labels)
-        preds = (torch.sigmoid(out) > 0.5).float() # Binary sigmoid for predictions with threshold 0.5
+        preds = (out > 0.5).float()
         acc = (preds == labels).float().mean()
         return {'val_loss': loss.detach(), 'val_acc': acc.detach()}
     
@@ -85,7 +79,7 @@ def get_resnet_model(pretrained=True):
     # Load the ResNet18 model with pretrained weights
     # Note: ResNet18 is commonly used in deep-sdms, using deeper models might not be necessary
     model = models.resnet18(weights=ResNet18_Weights.DEFAULT)
-    # Modify the first convolution layer to accept 4 channels instead of 3 (RBG + NIR for NAIP)
+    # Modify the first convolution layer to accept 4 channels instead of 3
     original_conv = model.conv1
     model.conv1 = nn.Conv2d(in_channels=4,
                             out_channels=original_conv.out_channels,
@@ -133,10 +127,10 @@ class HostImageryClimateModel(HostImageClimateModelBase):
             nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(hidden_dim, 1),  # Binary classification logits
-            # nn.Sigmoid()  # Output between 0 and 1
+            nn.Sigmoid()  # Output between 0 and 1
         )
 
-        # A Shallower MLP alternative has lower performance
+        # Shallower MLP alternative has lower performance
         # self.climate_mlp = nn.Sequential(
         #     nn.Linear(num_env_features, 128),
         #     nn.ReLU(),
@@ -176,7 +170,7 @@ class HostImageryOnlyModel(HostImageClimateModelBase):
             nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(hidden_dim, 1),  # Binary classification
-            # nn.Sigmoid()  # Output between 0 and 1
+            nn.Sigmoid()  # Output between 0 and 1
         )
 
     def forward(self, img):
@@ -213,7 +207,7 @@ class HostClimateOnlyModel(HostImageClimateModelBase):
             nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(hidden_dim, 1),  # Binary classification
-            # nn.Sigmoid()  # Output between 0 and 1
+            nn.Sigmoid()  # Output between 0 and 1
         )
 
     def forward(self, env):
