@@ -132,7 +132,7 @@ class HostImageryClimateModel(HostImageClimateModelBase):
             nn.Linear(512 + 2000, hidden_dim),  # 512 from Resnet18 or 2048 from ResNet50 + 2000 from climate features
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(hidden_dim, 1),  # Binary classification logits
+            nn.Linear(hidden_dim, 1),  # Model output is Logits
             # nn.Sigmoid()  # Output between 0 and 1
         )
 
@@ -175,7 +175,7 @@ class HostImageryOnlyModel(HostImageClimateModelBase):
             nn.Linear(512, hidden_dim),  # 512 from Resnet18 or 2048 from ResNet50
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(hidden_dim, 1),  # Binary classification
+            nn.Linear(hidden_dim, 1),  # Model output is Logits
             # nn.Sigmoid()  # Output between 0 and 1
         )
 
@@ -212,7 +212,7 @@ class HostClimateOnlyModel(HostImageClimateModelBase):
             nn.Linear(2000, hidden_dim),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(hidden_dim, 1),  # Binary classification
+            nn.Linear(hidden_dim, 1),  # Model output is Logits
             # nn.Sigmoid()  # Output between 0 and 1
         )
 
